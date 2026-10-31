@@ -1,12 +1,13 @@
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 INSTALL = ROOT / 'opencode/scripts/install.sh'
-SOURCE = ROOT / 'omp/agent'
+SOURCE = ROOT / 'shared/agent'
 PATHS = ('AGENTS.md', 'references/policy-details.md', 'skills/copilot',
          'skills/coach', 'skills/executor')
 
@@ -44,6 +45,15 @@ class InstallTest(unittest.TestCase):
         self.assertTrue((self.home / '.config/opencode/AGENTS.md').is_symlink())
         self.env['XDG_CONFIG_HOME'] = 'relative'
         self.assertNotEqual(self.run_install().returncode, 0)
+
+    def test_install_without_omp_directory(self):
+        isolated = self.home / 'repository'
+        shutil.copytree(ROOT / 'shared', isolated / 'shared')
+        shutil.copytree(ROOT / 'opencode', isolated / 'opencode')
+        script = isolated / 'opencode/scripts/install.sh'
+        result = subprocess.run(['bash', str(script)], env=self.env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.target / 'skills/coach').resolve(), isolated / 'shared/agent/skills/coach')
 
 
 if __name__ == '__main__':

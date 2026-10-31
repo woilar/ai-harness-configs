@@ -30,7 +30,7 @@ class InstallTests(unittest.TestCase):
     def assert_installed(self):
         for relative in LINKS:
             destination = self.target / relative
-            source = self.repo / 'omp/agent' / relative
+            source = self.repo / 'shared/agent' / relative
             self.assertTrue(destination.is_symlink(), relative)
             self.assertEqual(os.readlink(destination), str(source))
         self.assertIn('name: copilot', (self.target / 'skills/copilot/SKILL.md').read_text())
@@ -58,6 +58,16 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('ничего не записано', result.stdout)
         self.assertFalse(self.target.exists())
+
+    def test_old_omp_links_remain_valid(self):
+        for relative in LINKS:
+            dest = self.target / relative
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.symlink_to(self.repo / 'omp/agent' / relative)
+        result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Новых ссылок: 0', result.stdout)
+        self.assertIn('name: coach', (self.target / 'skills/coach/SKILL.md').read_text())
 
     def test_late_destination_conflict_has_no_partial_install(self):
         conflict = self.target / 'skills/executor'
@@ -98,7 +108,7 @@ class InstallTests(unittest.TestCase):
         self.assertEqual((self.target / 'skills').read_text(), 'not a directory\n')
 
     def test_missing_reference_is_rejected(self):
-        reference = self.repo / 'omp/agent/skills/coach/references/scientific-basis.md'
+        reference = self.repo / 'shared/agent/skills/coach/references/scientific-basis.md'
         reference.unlink()
         result = self.run_install()
         self.assertNotEqual(result.returncode, 0)

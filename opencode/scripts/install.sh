@@ -5,4 +5,4 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd "$script_dir/../.." && pwd -P)"
 target="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
 case "$target" in /*) ;; *) printf 'XDG_CONFIG_HOME должен быть абсолютным путём.\n' >&2; exit 2 ;; esac
-exec bash "$repo_root/omp/scripts/install.sh" --target "$target" "$@"
+exec bash "$repo_root/shared/scripts/install.sh" --target "$target" "$@"
