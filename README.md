@@ -7,6 +7,7 @@
 | --- | --- | --- |
 | Oh My Pi | Готовая конфигурация: Copilot, Coach, Executor | [omp/README.md](omp/README.md) |
 | OpenCode V2 | Те же роли и общие правила, отдельная установка | [opencode/README.md](opencode/README.md) |
+| Codex | Те же роли и общие правила для локального Codex | [codex/README.md](codex/README.md) |
 | DeepSeek Harness | Место для будущей конфигурации | [deepseek-harness/README.md](deepseek-harness/README.md) |
 
 ## Начать после распаковки
