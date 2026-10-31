@@ -31,7 +31,31 @@ class InstallTest(unittest.TestCase):
         self.assertEqual(value['skills'], [str(SOURCE / 'skills')])
         original = config.read_text()
         self.assertEqual(self.run_install().returncode, 0)
+        self.assertEqual(self.run_install('--verify').returncode, 0)
         self.assertEqual(config.read_text(), original)
+
+    def test_verify_finds_missing_entries_without_changing_config(self):
+        self.assertNotEqual(self.run_install('--verify').returncode, 0)
+        self.assertEqual(self.run_install().returncode, 0)
+        cfg = self.target / 'opencode.json'
+        cfg.write_text('{"skills": []}')
+        original = cfg.read_text()
+        result = self.run_install('--verify')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('instructions', result.stderr)
+        self.assertIn('skills', result.stderr)
+        self.assertEqual(cfg.read_text(), original)
+
+    def test_verify_reports_missing_skill_file(self):
+        isolated = self.home / 'repository'
+        shutil.copytree(ROOT / 'shared', isolated / 'shared')
+        shutil.copytree(ROOT / 'opencode', isolated / 'opencode')
+        script = isolated / 'opencode/scripts/install.sh'
+        self.assertEqual(subprocess.run(['bash', str(script)], env=self.env, capture_output=True).returncode, 0)
+        (isolated / 'shared/agent/skills/coach/SKILL.md').unlink()
+        result = subprocess.run(['bash', str(script), '--verify'], env=self.env, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('coach/SKILL.md', result.stderr)
 
     def test_existing_jsonc_and_agents_are_preserved(self):
         self.target.mkdir(parents=True)

@@ -166,6 +166,9 @@ def main():
     for dest in managed:
         if dest.is_symlink() and Path(os.readlink(dest)) in [SOURCE / str(dest.relative_to(target)), ROOT / 'omp/agent' / str(dest.relative_to(target))]:
             dest.unlink()
+    from verify import verify
+    print('Проверка установленной конфигурации:')
+    if verify(): raise ValueError('Проверка не пройдена; см. ошибки выше')
     print('Готово. Начните новую сессию OpenCode V2.')
 
 
