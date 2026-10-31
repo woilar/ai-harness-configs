@@ -18,6 +18,7 @@ source_root="$(cd "$script_dir/../agent" && pwd -P)"
 legacy_path="$(cd "$script_dir/../.." && pwd -P)/omp/agent"
 required_files=(
   'AGENTS.md'
+  'role-orchestration.md'
   'references/policy-details.md'
   'skills/copilot/SKILL.md'
   'skills/copilot/references/java-impact-checklist.md'

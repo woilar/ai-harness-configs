@@ -5,6 +5,10 @@ Copilot, Coach, Executor и их справочники. Дублировать 
 не нужно. Установщик рассчитан на macOS и Linux, Bash и стандартные утилиты;
 для Windows используйте WSL. OpenCode V2 и провайдер модели подключаются отдельно.
 
+Основной файл правил — `shared/agent/role-orchestration.md`.
+Для совместимости `shared/agent/AGENTS.md` является ссылкой на него. Текущая
+установка подключает его через глобальный `AGENTS.md`, а не через `instructions`.
+
 ```bash
 bash opencode/scripts/install.sh --dry-run
 bash opencode/scripts/install.sh

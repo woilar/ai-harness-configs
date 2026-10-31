@@ -30,6 +30,7 @@ class InstallTest(unittest.TestCase):
         for path in PATHS:
             self.assertTrue((self.target / path).is_symlink(), path)
             self.assertEqual((self.target / path).resolve(), (SOURCE / path).resolve())
+        self.assertEqual((self.target / 'AGENTS.md').resolve(), SOURCE / 'role-orchestration.md')
         self.assertEqual(self.run_install().returncode, 0)
 
     def test_conflict_stops_before_writes(self):
