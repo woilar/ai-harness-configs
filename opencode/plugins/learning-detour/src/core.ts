@@ -182,6 +182,7 @@ export class Detours {
 export function isMissing(e: unknown) {
   const v = e as { status?: number; statusCode?: number; _tag?: string };
   return (
+    v?._tag === "Session.NotFoundError" ||
     v?._tag === "SessionNotFoundError" ||
     v?.status === 404 ||
     v?.statusCode === 404

@@ -50,7 +50,7 @@ export function fixture() {
   const host: Host = {
     get: async (id) => {
       const s = sessions.get(id);
-      if (!s) throw { _tag: "SessionNotFoundError" };
+      if (!s) throw { _tag: "Session.NotFoundError" };
       return s;
     },
     hasAgent: async () => true,
