@@ -55,6 +55,16 @@ class InstallTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((self.target / 'skills/coach').resolve(), isolated / 'shared/agent/skills/coach')
 
+    def test_legacy_learning_data_is_preserved_and_reported(self):
+        old = self.home / '.engineering-learning/gaps'
+        old.mkdir(parents=True)
+        (old / 'card.md').write_text('existing gap')
+        result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Найден прежний учебный журнал', result.stdout)
+        self.assertEqual((old / 'card.md').read_text(), 'existing gap')
+        self.assertFalse((self.home / 'ai/learning').exists())
+
 
 if __name__ == '__main__':
     unittest.main()

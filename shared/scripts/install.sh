@@ -66,6 +66,9 @@ if [ "$conflicts" -gt 0 ]; then
 fi
 
 printf 'Источник: %s\nЦель: %s\n' "$source_root" "$target"
+if [ -e "$HOME/.engineering-learning" ] && [ ! -L "$HOME/.engineering-learning" ]; then
+  printf 'Найден прежний учебный журнал: %s/.engineering-learning. Проверьте перенос в %s/ai/learning; существующие данные не изменены.\n' "$HOME" "$HOME"
+fi
 if [ "$dry_run" -eq 1 ]; then
   for relative in "${relative_paths[@]}"; do
     if [ -L "$target/$relative" ]; then
