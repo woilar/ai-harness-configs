@@ -86,3 +86,11 @@ python3 opencode/tests/test_install.py
 
 См. документацию OpenCode V2: https://opencode.ai/v2/docs/skills/ и
 https://opencode.ai/v2/docs/instructions/.
+
+## Изолированные учебные сессии
+
+Необязательный самостоятельный плагин [Learning Detour](plugins/learning-detour/README.md)
+связывает рабочую сессию с отдельным интерактивным Coach и возвращает краткий итог
+в черновик без запуска реализации. Целевая версия — OpenCode Desktop 2.2.5;
+установка, ограничения и обязательная ручная проверка описаны только в README плагина.
+Обычный установщик фреймворка этот плагин не подключает.
