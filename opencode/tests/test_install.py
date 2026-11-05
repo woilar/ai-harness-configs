@@ -68,6 +68,22 @@ class InstallTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('handoff.md', result.stderr)
 
+    def test_upgrade_removes_only_retired_owned_links(self):
+        refs = self.target / 'references'
+        refs.mkdir(parents=True)
+        stale = refs / 'retired.md'
+        stale.symlink_to(SOURCE / 'references/retired.md')
+        foreign = refs / 'foreign.md'
+        foreign.symlink_to(self.home / 'missing-user-source.md')
+        personal = refs / 'personal.md'
+        personal.write_text('keep')
+        self.assertEqual(self.run_install('--dry-run').returncode, 0)
+        self.assertTrue(stale.is_symlink())
+        self.assertEqual(self.run_install().returncode, 0)
+        self.assertFalse(stale.is_symlink())
+        self.assertTrue(foreign.is_symlink())
+        self.assertEqual(personal.read_text(), 'keep')
+
     def test_existing_jsonc_and_agents_are_preserved(self):
         self.target.mkdir(parents=True)
         cfg = self.target / 'opencode.jsonc'

@@ -1,6 +1,6 @@
 references/policy-details.md
 references/planning.md
-references/beads.md
+references/task-state.md
 references/execution.md
 references/validation.md
 references/handoff.md

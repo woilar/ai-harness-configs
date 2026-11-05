@@ -142,6 +142,8 @@ def main():
     if legacy.exists() and not legacy.is_symlink(): print('Найден прежний учебный журнал:', legacy)
     # The old installer used symlinks; do not load its rules twice or override skill IDs.
     old_paths = ['AGENTS.md', 'references/policy-details.md', 'skills/coach', 'skills/copilot', 'skills/executor']
+    old_paths += [str(Path('references') / p.name) for p in (target / 'references').glob('*.md')
+                  if p.is_symlink() and not (SOURCE / 'references' / p.name).exists()]
     managed = []
     for relative in old_paths:
         dest = target / relative

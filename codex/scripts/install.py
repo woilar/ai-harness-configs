@@ -120,6 +120,13 @@ def main():
         if (parent.exists() or parent.is_symlink()) and not parent.is_dir():
             error(f'Родительский путь не является папкой: {parent}')
     after = render(before, (ROOT / 'role-orchestration.md').read_bytes(), source_policy)
+    stale = {}
+    for dest in (codex / 'references').glob('*.md'):
+        relative = Path('references') / dest.name
+        if dest.is_symlink() and not (ROOT / relative).exists():
+            link = os.readlink(dest)
+            if link in (str(ROOT / relative), str(ROOT.parents[1] / 'omp/agent' / relative)):
+                stale[dest] = link
     change = before != after
     print(f'Активные глобальные инструкции: {active}')
     print(f'Управляемый блок: {"обновить" if change else "уже актуален"}')
@@ -127,6 +134,8 @@ def main():
         print('ВНИМАНИЕ: размер инструкций больше стандартного лимита Codex 32 KiB; проверьте project_doc_max_bytes.')
     for dest, source in links.items():
         print(f'{"Уже подключено" if dest.is_symlink() else "Создать ссылку"}: {dest} -> {source}')
+    for dest in stale:
+        print(f'Убрать устаревшую ссылку: {dest}')
     try:
         subprocess.run(['bash', str(ROOT.parent / 'scripts/check-tools.sh')], check=False)
     except OSError as exc:
@@ -161,6 +170,9 @@ def main():
             installed = True
             if active.read_bytes() != after:
                 error('Не удалось подтвердить записанные инструкции.')
+        for dest, link in stale.items():
+            if dest.is_symlink() and os.readlink(dest) == link and not (ROOT / 'references' / dest.name).exists():
+                dest.unlink()
         print('Готово. Откройте новую сессию Codex и проверьте skills и инструкции.')
     except BaseException:
         if installed:
