@@ -89,7 +89,8 @@ def main():
     parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
     codex, skills = args.codex_home, args.skills_dir
-    required = ['role-orchestration.md', 'references/policy-details.md',
+    reference_paths = (ROOT / 'reference-files.txt').read_text().splitlines()
+    required = ['role-orchestration.md', *reference_paths,
                 'skills/coach/SKILL.md', 'skills/coach/references/scientific-basis.md',
                 *[f'skills/{role}/references/java-impact-checklist.md' for role in ('coach', 'copilot', 'executor')],
                 'skills/copilot/SKILL.md', 'skills/executor/SKILL.md']
@@ -104,7 +105,7 @@ def main():
     if active != override and override_bytes is None and override.is_symlink():
         error(f'Недоступная ссылка: {override}')
     source_policy = ROOT / 'references/policy-details.md'
-    links = {codex / 'references/policy-details.md': source_policy,
+    links = {**{codex / relative: ROOT / relative for relative in reference_paths},
              **{skills / role: ROOT / 'skills' / role for role in ('coach', 'copilot', 'executor')}}
     for dest, source in links.items():
         if dest.is_symlink() and os.readlink(dest) == str(source) and dest.exists():
@@ -174,3 +175,4 @@ if __name__ == '__main__':
     except (ValueError, OSError) as exc:
         print(f'Ошибка: {exc}', file=sys.stderr)
         sys.exit(1)
+

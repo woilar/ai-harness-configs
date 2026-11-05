@@ -57,6 +57,17 @@ class InstallTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('coach/SKILL.md', result.stderr)
 
+    def test_missing_workflow_module(self):
+        isolated = self.home / 'repository'
+        shutil.copytree(ROOT / 'shared', isolated / 'shared')
+        shutil.copytree(ROOT / 'opencode', isolated / 'opencode')
+        script = isolated / 'opencode/scripts/install.sh'
+        self.assertEqual(subprocess.run(['bash', str(script)], env=self.env, capture_output=True).returncode, 0)
+        (isolated / 'shared/agent/references/handoff.md').unlink()
+        result = subprocess.run(['bash', str(script), '--verify'], env=self.env, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('handoff.md', result.stderr)
+
     def test_existing_jsonc_and_agents_are_preserved(self):
         self.target.mkdir(parents=True)
         cfg = self.target / 'opencode.jsonc'
@@ -111,3 +122,4 @@ class InstallTest(unittest.TestCase):
         self.assertIn(str(isolated / 'shared/agent/skills'), (self.target / 'opencode.json').read_text())
 
 if __name__ == '__main__': unittest.main()
+

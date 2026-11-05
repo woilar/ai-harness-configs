@@ -2,13 +2,15 @@
 """Integration checks using isolated directories; the real agent config is untouched."""
 from pathlib import Path
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import unittest
 
 REPOSITORY = Path(__file__).resolve().parents[2]
-LINKS = ('AGENTS.md', 'references/policy-details.md', 'skills/copilot',
+REFERENCES = tuple((REPOSITORY / 'shared/agent/reference-files.txt').read_text().splitlines())
+LINKS = ('AGENTS.md', *REFERENCES, 'skills/copilot',
          'skills/coach', 'skills/executor')
 
 
@@ -36,7 +38,9 @@ class InstallTests(unittest.TestCase):
         self.assertIn('name: copilot', (self.target / 'skills/copilot/SKILL.md').read_text())
         self.assertIn('name: coach', (self.target / 'skills/coach/SKILL.md').read_text())
         self.assertIn('name: executor', (self.target / 'skills/executor/SKILL.md').read_text())
-        self.assertIn('# Договорённости:', (self.target / 'references/policy-details.md').read_text())
+        self.assertIn('# Договорённости:', (self.target / 'references/plan-template.md').read_text())
+        for relative in REFERENCES:
+            self.assertTrue((self.target / relative).read_text().strip(), relative)
         self.assertTrue((self.target / 'skills/coach/references/scientific-basis.md').is_file())
 
     def test_fresh_install_and_repeat(self):
@@ -119,6 +123,39 @@ class InstallTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.target.exists())
 
+    def test_missing_workflow_module_stops_before_install(self):
+        (self.repo / 'shared/agent/references/planning.md').unlink()
+        result = self.run_install()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('planning.md', result.stderr)
+        self.assertFalse(self.target.exists())
+
+    def test_router_and_module_links_resolve_after_install(self):
+        result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        router = (self.target / 'AGENTS.md').read_text()
+        routed = re.findall(r'`(references/[\w-]+\.md)`', router)
+        self.assertTrue(routed)
+        for relative in routed:
+            self.assertIn(relative, REFERENCES)
+            self.assertTrue((self.target / relative).is_file(), relative)
+        for relative in REFERENCES:
+            installed = self.target / relative
+            for link in re.findall(r'\]\(([^)#]+\.md)\)', installed.read_text()):
+                self.assertTrue((installed.parent / link).is_file(), (relative, link))
+
+    def test_upgrade_from_original_five_links(self):
+        for relative in ('AGENTS.md', 'references/policy-details.md', 'skills/copilot', 'skills/coach', 'skills/executor'):
+            dest = self.target / relative
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.symlink_to(self.repo / 'shared/agent' / relative)
+        personal = self.target / 'references/personal.md'
+        personal.write_text('keep')
+        result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_installed()
+        self.assertEqual(personal.read_text(), 'keep')
+
     def test_profile_path_and_invalid_name(self):
         for name, suffix in [('java', '.omp/profiles/java/agent'), ('default', '.omp/agent')]:
             result = subprocess.run(['bash', str(self.script), '--profile', name, '--dry-run'],
@@ -151,3 +188,4 @@ class InstallTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
+

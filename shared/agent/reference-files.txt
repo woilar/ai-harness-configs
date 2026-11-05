@@ -1,0 +1,9 @@
+references/policy-details.md
+references/planning.md
+references/beads.md
+references/execution.md
+references/validation.md
+references/handoff.md
+references/learning-journal.md
+references/metrics.md
+references/plan-template.md

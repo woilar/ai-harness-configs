@@ -16,10 +16,16 @@ while [ "${target%/}" != "$target" ]; do target="${target%/}"; done
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source_root="$(cd "$script_dir/../agent" && pwd -P)"
 legacy_path="$(cd "$script_dir/../.." && pwd -P)/omp/agent"
+reference_paths=()
+[ -r "$source_root/reference-files.txt" ] || die 'Отсутствует список модулей reference-files.txt.'
+while IFS= read -r relative; do
+  case "$relative" in references/*.md) ;; *) die "Некорректный путь модуля: $relative" ;; esac
+  reference_paths+=("$relative")
+done < "$source_root/reference-files.txt"
 required_files=(
   'AGENTS.md'
   'role-orchestration.md'
-  'references/policy-details.md'
+  "${reference_paths[@]}"
   'skills/copilot/SKILL.md'
   'skills/copilot/references/java-impact-checklist.md'
   'skills/coach/SKILL.md'
@@ -35,7 +41,7 @@ done
 
 relative_paths=(
   'AGENTS.md'
-  'references/policy-details.md'
+  "${reference_paths[@]}"
   'skills/copilot'
   'skills/coach'
   'skills/executor'
@@ -122,3 +128,4 @@ for relative in "${relative_paths[@]}"; do
   printf 'Подключено: %s\n' "$destination"
 done
 printf 'Готово. Новых ссылок: %s. Запустите новую сессию harness.\n' "$created_count"
+

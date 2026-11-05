@@ -22,7 +22,8 @@ class InstallTest(unittest.TestCase):
         self.agent = self.codex / 'AGENTS.md'
         self.router = self.repo / 'shared/agent/role-orchestration.md'
         self.policy = self.repo / 'shared/agent/references/policy-details.md'
-        self.links = {self.codex / 'references/policy-details.md': self.policy,
+        reference_paths = (self.repo / 'shared/agent/reference-files.txt').read_text().splitlines()
+        self.links = {**{self.codex / relative: self.repo / 'shared/agent' / relative for relative in reference_paths},
                       **{self.skills / role: self.repo / 'shared/agent/skills' / role
                          for role in ('coach', 'copilot', 'executor')}}
 
@@ -139,6 +140,13 @@ class InstallTest(unittest.TestCase):
         self.assertNotEqual(self.install().returncode, 0)
         self.assertFalse(self.codex.exists())
 
+    def test_missing_workflow_module_stops_before_install(self):
+        (self.repo / 'shared/agent/references/validation.md').unlink()
+        result = self.install()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('validation.md', result.stderr)
+        self.assertFalse(self.codex.exists())
+
     def test_failure_during_symlinks_rolls_back_created_links(self):
         self.codex.mkdir()
         self.agent.write_text('My rules')
@@ -179,3 +187,4 @@ with patch.object(module.os, 'symlink', fail_third):
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
+

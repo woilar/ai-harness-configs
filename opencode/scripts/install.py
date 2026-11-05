@@ -120,7 +120,8 @@ def main():
     xdg = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
     if not xdg.is_absolute(): raise ValueError('XDG_CONFIG_HOME должен быть абсолютным путём')
     target = xdg / 'opencode'
-    for file in ['role-orchestration.md', 'references/policy-details.md', 'skills/coach/SKILL.md', 'skills/copilot/SKILL.md', 'skills/executor/SKILL.md']:
+    reference_paths = (SOURCE / 'reference-files.txt').read_text().splitlines()
+    for file in ['role-orchestration.md', *reference_paths, 'skills/coach/SKILL.md', 'skills/copilot/SKILL.md', 'skills/executor/SKILL.md']:
         if not (SOURCE / file).is_file(): raise ValueError('Нет файла фреймворка: ' + str(SOURCE / file))
     configs = [target / 'opencode.json', target / 'opencode.jsonc']
     present = [p for p in configs if p.exists() or p.is_symlink()]
@@ -177,3 +178,4 @@ if __name__ == '__main__':
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print('Ошибка установки:', exc, file=__import__('sys').stderr)
         raise SystemExit(1)
+
