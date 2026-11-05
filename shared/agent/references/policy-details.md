@@ -7,6 +7,7 @@ AGENTS / role-orchestration.md определяет событие и обяза
 | --- | --- |
 | Начало/пересмотр планирования | [planning.md](planning.md) |
 | Рабочие MD, прогресс и случайные находки | [task-state.md](task-state.md) |
+| Явно отложенные находки/решения | [inbox.md](inbox.md) |
 | Исполнение, Fast-Track, Low Energy, /strict; атомарный шаг и четыре фазы | [execution.md](execution.md) |
 | Проверки, reverse explain, Diff Review, /deferred | [validation.md](validation.md) |
 | Смена роли, Handoff, восстановление после compaction | [handoff.md](handoff.md) |
