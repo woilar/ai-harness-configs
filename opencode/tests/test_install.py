@@ -102,9 +102,61 @@ class InstallTest(unittest.TestCase):
             result = self.run_install(*args)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn('2.0.99', result.stdout)
-            self.assertIn('plannotator: найден', result.stdout)
+            self.assertIn('plannotator CLI: найден', result.stdout)
             self.assertEqual(result.stdout.count('Проверка инструментов в PATH установщика:'), 1)
             self.assertFalse(marker.exists())
+
+    def test_plannotator_plugin_is_distinct_from_missing_cli(self):
+        commands = self.home / 'isolated-bin'
+        commands.mkdir()
+        for name in ('bash', 'python3', 'dirname'):
+            (commands / name).symlink_to(shutil.which(name))
+        self.env['PATH'] = str(commands)
+        self.target.mkdir(parents=True)
+        cfg = self.target / 'opencode.jsonc'
+        content = '{\n // keep comment\n "plugins": [{"package": "@plannotator/opencode@latest", "options": {"agentTool": true}},],\n}\n'
+        cfg.write_text(content)
+        for args in (['--dry-run'], [], [], ['--verify']):
+            result = self.run_install(*args)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn('Plannotator расширение OpenCode: указано в глобальном конфиге', result.stdout)
+            self.assertIn('@plannotator/opencode@latest', result.stdout)
+            self.assertIn('plannotator CLI: не найден в PATH', result.stdout)
+            self.assertIn('не подтверждает загрузку', result.stdout)
+            if args == ['--dry-run']:
+                self.assertEqual(cfg.read_text(), content)
+        self.assertIn(content.splitlines()[1], cfg.read_text())
+
+    def test_plannotator_plugin_package_variants_and_scope(self):
+        self.target.mkdir(parents=True)
+        cfg = self.target / 'opencode.json'
+        for package in ('@plannotator/opencode', '@plannotator/opencode@0.28.20'):
+            with self.subTest(package=package):
+                cfg.write_text(json.dumps({'plugins': [{'package': package}]}))
+                result = self.run_install('--dry-run')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn('расширение OpenCode: указано', result.stdout)
+        cfg.write_text(json.dumps({'plugins': [{'package': '@plannotator/opencode-extra'}]}))
+        result = self.run_install('--dry-run')
+        self.assertIn('не найдено в проверенном глобальном конфиге', result.stdout)
+        self.assertIn('Проектные настройки и локальные расширения не проверены', result.stdout)
+        cfg.write_text(json.dumps({'plugins': ['unknown-shape']}))
+        result = self.run_install('--dry-run')
+        self.assertIn('неизвестный формат', result.stdout)
+        cfg.write_text(json.dumps({'plugins': {'package': '@plannotator/opencode'}}))
+        result = self.run_install('--dry-run')
+        self.assertIn('не является списком', result.stdout)
+
+    def test_missing_and_invalid_global_config_are_not_reported_as_missing_plugin(self):
+        r = self.run_install('--dry-run')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('глобальный конфиг отсутствует; расширения не проверены', r.stdout)
+        self.target.mkdir(parents=True)
+        (self.target / 'opencode.json').write_text('{invalid')
+        r = self.run_install('--verify')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('глобальная конфигурация не проверена', r.stdout)
+        self.assertNotIn('не найдено в проверенном глобальном конфиге', r.stdout)
 
     def test_upgrade_removes_only_retired_owned_links(self):
         refs = self.target / 'references'
