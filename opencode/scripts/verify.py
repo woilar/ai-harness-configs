@@ -33,7 +33,12 @@ def verify():
             failures.append(f'В {key} отсутствует путь {path}.')
         else:
             print(f'OK: {key} содержит путь к фреймворку.')
-    for file in ['role-orchestration.md', 'references/policy-details.md',
+    try:
+        reference_paths = (SOURCE / 'reference-files.txt').read_text().splitlines()
+    except (OSError, UnicodeError) as e:
+        failures.append('Недоступен список модулей: ' + str(e))
+        reference_paths = []
+    for file in ['role-orchestration.md', *reference_paths,
                  'skills/coach/SKILL.md', 'skills/coach/references/java-impact-checklist.md',
                  'skills/coach/references/scientific-basis.md', 'skills/copilot/SKILL.md',
                  'skills/copilot/references/java-impact-checklist.md', 'skills/executor/SKILL.md',
@@ -75,3 +80,4 @@ def verify():
 
 if __name__ == '__main__':
     sys.exit(verify())
+

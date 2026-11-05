@@ -23,7 +23,7 @@ bash codex/scripts/install.sh
 | Где Codex ищет | На что указывает ссылка |
 | --- | --- |
 | `${CODEX_HOME:-~/.codex}/AGENTS.override.md` или `AGENTS.md` | управляемый блок с текстом `role-orchestration.md` и абсолютным путём к политике |
-| `${CODEX_HOME:-~/.codex}/references/policy-details.md` | подробная политика для чтения по событию |
+| `${CODEX_HOME:-~/.codex}/references/*.md` из `reference-files.txt` | отдельные модули для чтения по событию; policy-details.md — индекс |
 | `~/.agents/skills/coach` | общий Coach со справочниками |
 | `~/.agents/skills/copilot` | общий Copilot со справочником |
 | `~/.agents/skills/executor` | общий Executor со справочником |
@@ -105,3 +105,4 @@ skills указывают на ваш клон, и удалите только �
 
 Для разработчиков: `python3 codex/tests/test_install.py` запускает тесты в
 одноразовых временных директориях и не трогает реальные настройки.
+
