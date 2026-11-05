@@ -2,6 +2,7 @@
 """Read-only checks for the global OpenCode V2 framework installation."""
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -9,7 +10,7 @@ import sys
 from install import ROOT, SOURCE, parse
 
 
-def verify():
+def verify(check_tools=True):
     failures = []
     warnings = []
     home = Path.home()
@@ -53,7 +54,32 @@ def verify():
                     failures.append('Проверьте имя и description скилла: ' + str(SOURCE / file))
         except (OSError, UnicodeError) as e:
             failures.append(f'Недоступен {SOURCE / file}: {e}')
+    try:
+        router = (SOURCE / 'role-orchestration.md').read_text(encoding='utf-8')
+        for relative in re.findall(r'`(references/[\w-]+\.md)`', router):
+            if relative not in reference_paths:
+                failures.append('Модуль маршрутизатора не зарегистрирован: ' + relative)
+        for relative in reference_paths:
+            module = SOURCE / relative
+            if not module.is_file():
+                continue
+            for link in re.findall(r'\]\(([^)#]+\.md)\)', module.read_text(encoding='utf-8')):
+                if not (module.parent / link).is_file():
+                    failures.append(f'Недоступна ссылка модуля {relative}: {link}')
+        eager = set(reference_paths) - {'references/policy-details.md'}
+        instructions = data.get('instructions', [])
+        if isinstance(instructions, list):
+            for relative in eager:
+                if str(SOURCE / relative) in instructions:
+                    warnings.append('Модуль загружается при старте вместо чтения по событию: ' + relative)
+    except (OSError, UnicodeError) as e:
+        failures.append('Маршрутизация модулей не проверена: ' + str(e))
     if not failures: print('OK: файлы фреймворка и метаданные скиллов доступны.')
+    if check_tools:
+        try:
+            subprocess.run(['bash', str(ROOT / 'shared/scripts/check-tools.sh')], check=False)
+        except OSError as e:
+            warnings.append('Диагностика Plannotator недоступна: ' + str(e))
     # A user-owned global skill with a matching ID can affect discovery/precedence.
     for name in ('coach', 'copilot', 'executor'):
         for base in (target / 'skills', home / '.agents/skills', home / '.claude/skills'):
@@ -61,7 +87,7 @@ def verify():
             if candidate.exists() or candidate.is_symlink(): warnings.append(f'Проверьте дублирование скилла {name}: {candidate}')
     old = home / '.engineering-learning'
     if old.exists() and not old.is_symlink(): warnings.append(f'Есть прежний журнал: {old}. Проверьте перенос в {home / "ai/learning"}.')
-    binary = shutil.which('opencode')
+    binary = shutil.which('opencode2') or shutil.which('opencode')
     if binary:
         try:
             r = subprocess.run([binary, '--version'], capture_output=True, text=True, timeout=10)
@@ -69,7 +95,7 @@ def verify():
             ver = version[0] if version else 'нет ответа'
             if r.returncode != 0 or not ver.lstrip('v').startswith('2.'):
                 warnings.append(f'Не удалось подтвердить OpenCode V2 по --version: {ver}')
-            else: print('OK: версия OpenCode:', ver)
+            else: print('OK: версия OpenCode:', ver, '(' + binary + ')')
         except (OSError, subprocess.TimeoutExpired) as e: warnings.append(f'Версия OpenCode не проверена: {e}')
     else: warnings.append('OpenCode CLI не найден в PATH; Desktop и версию V2 проверьте отдельно.')
     for message in failures: print('ОШИБКА:', message, file=sys.stderr)

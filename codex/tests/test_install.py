@@ -147,6 +147,22 @@ class InstallTest(unittest.TestCase):
         self.assertIn('validation.md', result.stderr)
         self.assertFalse(self.codex.exists())
 
+    def test_upgrade_removes_only_retired_owned_links(self):
+        refs = self.codex / 'references'
+        refs.mkdir(parents=True)
+        stale = refs / 'retired.md'
+        stale.symlink_to(self.repo / 'shared/agent/references/retired.md')
+        foreign = refs / 'foreign.md'
+        foreign.symlink_to(self.work / 'missing-user-source.md')
+        personal = refs / 'personal.md'
+        personal.write_text('keep')
+        self.assertEqual(self.install('--dry-run').returncode, 0)
+        self.assertTrue(stale.is_symlink())
+        self.assertEqual(self.install().returncode, 0)
+        self.assertFalse(stale.is_symlink())
+        self.assertTrue(foreign.is_symlink())
+        self.assertEqual(personal.read_text(), 'keep')
+
     def test_failure_during_symlinks_rolls_back_created_links(self):
         self.codex.mkdir()
         self.agent.write_text('My rules')

@@ -46,6 +46,20 @@ relative_paths=(
   'skills/coach'
   'skills/executor'
 )
+# Only retire dangling links owned by this checkout; never remove user files.
+stale_paths=()
+stale_count=0
+for destination in "$target"/references/*.md; do
+  [ -L "$destination" ] || continue
+  relative="references/${destination##*/}"
+  source="$source_root/$relative"
+  [ ! -e "$source" ] || continue
+  link="$(readlink "$destination")"
+  if [ "$link" = "$source" ] || [ "$link" = "$legacy_path/$relative" ]; then
+    stale_paths[$stale_count]="$relative"
+    stale_count=$((stale_count + 1))
+  fi
+done
 conflicts=0
 for relative in "${relative_paths[@]}"; do
   destination="$target/$relative"
@@ -78,6 +92,9 @@ if [ -e "$HOME/.engineering-learning" ] && [ ! -L "$HOME/.engineering-learning" 
   printf 'Найден прежний учебный журнал: %s/.engineering-learning. Проверьте перенос в %s/ai/learning; существующие данные не изменены.\n' "$HOME" "$HOME"
 fi
 if [ "$dry_run" -eq 1 ]; then
+  for ((i=0; i<stale_count; i++)); do
+    printf 'Убрать устаревшую ссылку: %s\n' "$target/${stale_paths[$i]}"
+  done
   for relative in "${relative_paths[@]}"; do
     if [ -L "$target/$relative" ]; then
       printf 'Уже подключено: %s\n' "$target/$relative"
@@ -127,6 +144,17 @@ for relative in "${relative_paths[@]}"; do
   created_paths[$created_count]="$relative"
   created_count=$((created_count + 1))
   printf 'Подключено: %s\n' "$destination"
+done
+for ((i=0; i<stale_count; i++)); do
+  relative="${stale_paths[$i]}"
+  destination="$target/$relative"
+  if [ -L "$destination" ] && [ ! -e "$source_root/$relative" ]; then
+    link="$(readlink "$destination")"
+    if [ "$link" = "$source_root/$relative" ] || [ "$link" = "$legacy_path/$relative" ]; then
+      rm "$destination"
+      printf 'Убрана устаревшая ссылка: %s\n' "$destination"
+    fi
+  fi
 done
 printf 'Готово. Новых ссылок: %s. Запустите новую сессию harness.\n' "$created_count"
 

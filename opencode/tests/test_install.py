@@ -63,15 +63,71 @@ class InstallTest(unittest.TestCase):
         shutil.copytree(ROOT / 'opencode', isolated / 'opencode')
         script = isolated / 'opencode/scripts/install.sh'
         self.assertEqual(subprocess.run(['bash', str(script)], env=self.env, capture_output=True).returncode, 0)
-        (isolated / 'shared/agent/references/handoff.md').unlink()
+        for name in ('planning.md', 'task-state.md', 'inbox.md', 'handoff.md'):
+            with self.subTest(module=name):
+                module = isolated / 'shared/agent/references' / name
+                original = module.read_text()
+                module.unlink()
+                result = subprocess.run(['bash', str(script), '--verify'], env=self.env, capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(name, result.stderr)
+                module.write_text(original)
+
+    def test_verify_checks_router_manifest_contract(self):
+        isolated = self.home / 'repository'
+        shutil.copytree(ROOT / 'shared', isolated / 'shared')
+        shutil.copytree(ROOT / 'opencode', isolated / 'opencode')
+        script = isolated / 'opencode/scripts/install.sh'
+        self.assertEqual(subprocess.run(['bash', str(script)], env=self.env, capture_output=True).returncode, 0)
+        manifest = isolated / 'shared/agent/reference-files.txt'
+        manifest.write_text(manifest.read_text().replace('references/inbox.md\n', ''))
         result = subprocess.run(['bash', str(script), '--verify'], env=self.env, capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn('handoff.md', result.stderr)
+        self.assertIn('не зарегистрирован: references/inbox.md', result.stderr)
+
+    def test_verify_prefers_v2_cli_and_reports_plannotator_without_running_it(self):
+        commands = self.home / 'bin'
+        commands.mkdir()
+        marker = self.home / 'unexpected-execution'
+        for name, body in {
+            'opencode2': "printf '2.0.99\\n'\n",
+            'opencode': 'printf executed >> "' + str(marker) + '"\nexit 88\n',
+            'plannotator': 'printf executed >> "' + str(marker) + '"\nexit 99\n',
+        }.items():
+            executable = commands / name
+            executable.write_text('#!/bin/sh\n' + body)
+            executable.chmod(0o755)
+        self.env['PATH'] = str(commands) + os.pathsep + self.env.get('PATH', '')
+        for args in ([], ['--verify']):
+            result = self.run_install(*args)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn('2.0.99', result.stdout)
+            self.assertIn('plannotator: найден', result.stdout)
+            self.assertEqual(result.stdout.count('Проверка инструментов в PATH установщика:'), 1)
+            self.assertFalse(marker.exists())
+
+    def test_upgrade_removes_only_retired_owned_links(self):
+        refs = self.target / 'references'
+        refs.mkdir(parents=True)
+        stale = refs / 'retired.md'
+        stale.symlink_to(SOURCE / 'references/retired.md')
+        foreign = refs / 'foreign.md'
+        foreign.symlink_to(self.home / 'missing-user-source.md')
+        personal = refs / 'personal.md'
+        personal.write_text('keep')
+        self.assertEqual(self.run_install('--dry-run').returncode, 0)
+        self.assertTrue(stale.is_symlink())
+        self.assertEqual(self.run_install().returncode, 0)
+        self.assertFalse(stale.is_symlink())
+        self.assertTrue(foreign.is_symlink())
+        self.assertEqual(personal.read_text(), 'keep')
 
     def test_existing_jsonc_and_agents_are_preserved(self):
         self.target.mkdir(parents=True)
         cfg = self.target / 'opencode.jsonc'
-        cfg.write_text('{\n // comment\n "model": "some/model",\n "instructions": ["~/other.md",],\n "skills": [],\n}\n')
+        plugins = '"plugins": [{"package": "@plannotator/opencode@latest", "options": {"agentTool": true}}]'
+        mcp = '"mcp": {"personal": {"type": "local", "command": ["custom-server"]}}'
+        cfg.write_text('{\n // comment\n "model": "some/model",\n "instructions": ["~/other.md",],\n "skills": [],\n' + plugins + ',\n' + mcp + ',\n}\n')
         (self.target / 'AGENTS.md').write_text('personal')
         r = self.run_install()
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -80,6 +136,8 @@ class InstallTest(unittest.TestCase):
         self.assertIn('"~/other.md",', cfg.read_text())
         self.assertIn(str(SOURCE / 'role-orchestration.md'), cfg.read_text())
         self.assertEqual((self.target / 'AGENTS.md').read_text(), 'personal')
+        self.assertIn(plugins, cfg.read_text())
+        self.assertIn(mcp, cfg.read_text())
         self.assertEqual(self.run_install().returncode, 0)
 
     def test_conflicts_preserved(self):

@@ -36,31 +36,24 @@ class ToolDiagnosticsTest(unittest.TestCase):
         self.stub('curl')
         result = self.diagnose()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('bd: не найден', result.stdout)
         self.assertIn('plannotator: не найден', result.stdout)
-        self.assertIn('https://github.com/gastownhall/beads', result.stdout)
         self.assertIn('https://github.com/backnotprop/plannotator', result.stdout)
         self.assertNotIn('brew install', result.stdout)
         self.assertNotIn('curl ', result.stdout)
-        self.assertNotIn('dolt', result.stdout.lower())
         self.assertFalse(self.marker.exists())
 
     def test_found_tools_are_reported_without_execution(self):
-        bd = self.stub('bd')
         plannotator = self.stub('plannotator')
         result = self.diagnose()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(str(bd), result.stdout)
         self.assertIn(str(plannotator), result.stdout)
         self.assertNotIn('https://github.com/', result.stdout)
         self.assertFalse(self.marker.exists())
 
-    def test_mixed_and_non_executable_tools(self):
-        self.stub('bd')
+    def test_non_executable_tool_is_not_reported_as_available(self):
         (self.bin / 'plannotator').write_text('not executable')
         result = self.diagnose()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('bd: найден', result.stdout)
         self.assertIn('plannotator: не найден', result.stdout)
         self.assertFalse(self.marker.exists())
 
@@ -78,7 +71,6 @@ class ToolDiagnosticsTest(unittest.TestCase):
                     result = subprocess.run(command + args, env=env, capture_output=True,
                                             text=True, timeout=20)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                    self.assertIn('bd: не найден', result.stdout)
                     self.assertIn('plannotator: не найден', result.stdout)
                     if args:
                         self.assertFalse(home.exists())
