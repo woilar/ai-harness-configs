@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import sys
 
-from install import ROOT, SOURCE, parse
+from install import ROOT, SOURCE, parse, report_plannotator_plugin
 
 
 def verify(check_tools=True):
@@ -21,11 +21,13 @@ def verify(check_tools=True):
     target = config_root / 'opencode'
     configs = [p for p in (target / 'opencode.json', target / 'opencode.jsonc') if p.exists() or p.is_symlink()]
     data = {}
+    config_available = False
     if len(configs) != 1:
         failures.append('Нужен ровно один глобальный opencode.json или opencode.jsonc.')
     else:
         try:
             data = parse(configs[0].read_text(encoding='utf-8'))
+            config_available = True
         except (OSError, ValueError) as e:
             failures.append('Не удалось прочитать глобальный конфиг: ' + str(e))
     for key, path in [('instructions', SOURCE / 'role-orchestration.md'), ('skills', SOURCE / 'skills')]:
@@ -76,6 +78,7 @@ def verify(check_tools=True):
         failures.append('Маршрутизация модулей не проверена: ' + str(e))
     if not failures: print('OK: файлы фреймворка и метаданные скиллов доступны.')
     if check_tools:
+        report_plannotator_plugin(data if config_available else None, configs[0] if len(configs) == 1 else target)
         try:
             subprocess.run(['bash', str(ROOT / 'shared/scripts/check-tools.sh')], check=False)
         except OSError as e:

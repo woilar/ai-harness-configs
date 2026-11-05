@@ -36,7 +36,7 @@ class ToolDiagnosticsTest(unittest.TestCase):
         self.stub('curl')
         result = self.diagnose()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('plannotator: не найден', result.stdout)
+        self.assertIn('plannotator CLI: не найден', result.stdout)
         self.assertIn('https://github.com/backnotprop/plannotator', result.stdout)
         self.assertNotIn('brew install', result.stdout)
         self.assertNotIn('curl ', result.stdout)
@@ -54,7 +54,7 @@ class ToolDiagnosticsTest(unittest.TestCase):
         (self.bin / 'plannotator').write_text('not executable')
         result = self.diagnose()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('plannotator: не найден', result.stdout)
+        self.assertIn('plannotator CLI: не найден', result.stdout)
         self.assertFalse(self.marker.exists())
 
     def test_all_installers_report_missing_tools_on_dry_run_and_repeat(self):
@@ -71,7 +71,7 @@ class ToolDiagnosticsTest(unittest.TestCase):
                     result = subprocess.run(command + args, env=env, capture_output=True,
                                             text=True, timeout=20)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                    self.assertIn('plannotator: не найден', result.stdout)
+                    self.assertIn('plannotator CLI: не найден', result.stdout)
                     if args:
                         self.assertFalse(home.exists())
                 self.assertTrue(home.exists())

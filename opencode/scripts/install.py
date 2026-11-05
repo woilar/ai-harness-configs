@@ -114,6 +114,32 @@ def with_entry(text, name, entry):
     return text[:pos] + insertion + text[pos:]
 
 
+def report_plannotator_plugin(data, config):
+    """Inspect only the supplied global V2 config; do not load or execute plugins."""
+    if not isinstance(data, dict):
+        print('  Plannotator расширение OpenCode: глобальная конфигурация не проверена.')
+        return
+    if not config.exists():
+        print('  Plannotator расширение OpenCode: глобальный конфиг отсутствует; расширения не проверены.')
+        return
+    plugins = data.get('plugins', [])
+    if not isinstance(plugins, list):
+        print('  Plannotator расширение OpenCode: поле plugins не является списком; проверить вручную.')
+        return
+    specs = [item.get('package') for item in plugins if isinstance(item, dict)]
+    matches = [spec for spec in specs if isinstance(spec, str) and
+               (spec == '@plannotator/opencode' or spec.startswith('@plannotator/opencode@'))]
+    if matches:
+        print('  Plannotator расширение OpenCode: указано в глобальном конфиге', str(config) + ':', ', '.join(matches))
+        print('  Запись не подтверждает загрузку, включение плагина или доступность его инструментов в сеансе.')
+    elif any(not isinstance(item, dict) or not isinstance(item.get('package'), str) for item in plugins):
+        print('  Plannotator расширение OpenCode: часть записей plugins имеет неизвестный формат; проверьте вручную.')
+        print('  Проектные настройки и локальные расширения не проверены.')
+    else:
+        print('  Plannotator расширение OpenCode: не найдено в проверенном глобальном конфиге', config)
+        print('  Проектные настройки и локальные расширения не проверены.')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dry-run', action='store_true')
@@ -134,7 +160,7 @@ def main():
     instruction = str(SOURCE / 'role-orchestration.md')
     skills = str(SOURCE / 'skills')
     result = with_entry(with_entry(old, 'instructions', instruction), 'skills', skills)
-    parse(result)
+    parsed_result = parse(result)
     print('Конфиг:', config)
     print('Инструкции:', instruction)
     print('Скиллы:', skills)
@@ -153,6 +179,7 @@ def main():
             if link.is_absolute() and any(link == c for c in candidates): managed.append(dest)
     if managed:
         print('Прежние ссылки фреймворка будут отключены:', *(str(p) for p in managed), sep='\n  ')
+    report_plannotator_plugin(parsed_result, config)
     try:
         subprocess.run(['bash', str(ROOT / 'shared/scripts/check-tools.sh')], check=False)
     except OSError as exc:
