@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -126,6 +127,10 @@ def main():
         print('ВНИМАНИЕ: размер инструкций больше стандартного лимита Codex 32 KiB; проверьте project_doc_max_bytes.')
     for dest, source in links.items():
         print(f'{"Уже подключено" if dest.is_symlink() else "Создать ссылку"}: {dest} -> {source}')
+    try:
+        subprocess.run(['bash', str(ROOT.parent / 'scripts/check-tools.sh')], check=False)
+    except OSError as exc:
+        print(f'Диагностика инструментов недоступна; установка правил продолжается: {exc}')
     if args.dry_run:
         print('Dry-run: ничего не записано.')
         return

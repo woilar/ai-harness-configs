@@ -73,6 +73,7 @@ if [ "$conflicts" -gt 0 ]; then
 fi
 
 printf 'Источник: %s\nЦель: %s\n' "$source_root" "$target"
+bash "$script_dir/check-tools.sh" || printf 'Диагностика инструментов недоступна; установка правил продолжается.\n' >&2
 if [ -e "$HOME/.engineering-learning" ] && [ ! -L "$HOME/.engineering-learning" ]; then
   printf 'Найден прежний учебный журнал: %s/.engineering-learning. Проверьте перенос в %s/ai/learning; существующие данные не изменены.\n' "$HOME" "$HOME"
 fi
