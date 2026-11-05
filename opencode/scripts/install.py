@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import subprocess
 from pathlib import Path
 import tempfile
 
@@ -150,6 +151,10 @@ def main():
             if link.is_absolute() and any(link == c for c in candidates): managed.append(dest)
     if managed:
         print('Прежние ссылки фреймворка будут отключены:', *(str(p) for p in managed), sep='\n  ')
+    try:
+        subprocess.run(['bash', str(ROOT / 'shared/scripts/check-tools.sh')], check=False)
+    except OSError as exc:
+        print(f'Диагностика инструментов недоступна; установка правил продолжается: {exc}')
     if args.dry_run:
         print('Dry-run: ничего не записано.')
         return
