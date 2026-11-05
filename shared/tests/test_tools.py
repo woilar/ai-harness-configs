@@ -31,15 +31,17 @@ class ToolDiagnosticsTest(unittest.TestCase):
         return subprocess.run([BASH, str(ROOT / 'shared/scripts/check-tools.sh')],
                               env=self.env, capture_output=True, text=True, timeout=10)
 
-    def test_missing_tools_only_print_install_commands(self):
+    def test_missing_tools_only_print_official_links(self):
         self.stub('brew')
         self.stub('curl')
         result = self.diagnose()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('bd: не найден', result.stdout)
         self.assertIn('plannotator: не найден', result.stdout)
-        self.assertIn('brew install beads', result.stdout)
-        self.assertIn('plannotator.ai/install.sh', result.stdout)
+        self.assertIn('https://github.com/gastownhall/beads', result.stdout)
+        self.assertIn('https://github.com/backnotprop/plannotator', result.stdout)
+        self.assertNotIn('brew install', result.stdout)
+        self.assertNotIn('curl ', result.stdout)
         self.assertNotIn('dolt', result.stdout.lower())
         self.assertFalse(self.marker.exists())
 
@@ -50,7 +52,7 @@ class ToolDiagnosticsTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(str(bd), result.stdout)
         self.assertIn(str(plannotator), result.stdout)
-        self.assertNotIn('brew install', result.stdout)
+        self.assertNotIn('https://github.com/', result.stdout)
         self.assertFalse(self.marker.exists())
 
     def test_mixed_and_non_executable_tools(self):

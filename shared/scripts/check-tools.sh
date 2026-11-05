@@ -9,8 +9,8 @@ for tool in bd plannotator; do
   else
     printf '  %s: не найден в PATH\n' "$tool"
     case "$tool" in
-      bd) printf '    Установка через Homebrew: brew install beads\n' ;;
-      plannotator) printf '    Установка macOS/Linux: curl -fsSL https://plannotator.ai/install.sh | bash -s -- --minimal\n' ;;
+      bd) printf '    Официальный GitHub и актуальная установка: https://github.com/gastownhall/beads\n' ;;
+      plannotator) printf '    Официальный GitHub и актуальная установка: https://github.com/backnotprop/plannotator\n' ;;
     esac
   fi
 done
