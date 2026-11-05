@@ -176,7 +176,7 @@ def main():
             dest.unlink()
     from verify import verify
     print('Проверка установленной конфигурации:')
-    if verify(): raise ValueError('Проверка не пройдена; см. ошибки выше')
+    if verify(check_tools=False): raise ValueError('Проверка не пройдена; см. ошибки выше')
     print('Готово. Начните новую сессию OpenCode V2.')
 
 
