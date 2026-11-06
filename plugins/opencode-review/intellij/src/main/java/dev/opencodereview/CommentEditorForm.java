@@ -17,9 +17,9 @@ import java.util.function.Function;
 /** Shared editor. Creation is explicit; editing queued text still autosaves on focus loss. */
 final class CommentEditorForm extends JPanel {
     private final JTextArea input = new CommentInput();
+    private final JTextArea measurement = new JTextArea();
     private final JLabel error = new JLabel(" ");
     private final JLabel locationLabel;
-    private final JLabel creationHint = new JLabel();
     private final JButton save;
     private final JScrollPane scroll;
     private final JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, JBUI.scale(6), 0));
@@ -34,7 +34,7 @@ final class CommentEditorForm extends JPanel {
         super(new BorderLayout(0, JBUI.scale(8)));
         this.saveAction = saveAction; this.editing = editing;
         setOpaque(false);
-        setBorder(JBUI.Borders.empty(12));
+        setBorder(JBUI.Borders.empty(editing ? 12 : 6));
         locationLabel = new JLabel(location);
         locationLabel.setForeground(JBColor.namedColor("Label.infoForeground", new JBColor(0x677181, 0xA5AEBD)));
         locationLabel.setFont(locationLabel.getFont().deriveFont(Math.max(11f, locationLabel.getFont().getSize2D() - 1)));
@@ -44,17 +44,11 @@ final class CommentEditorForm extends JPanel {
             cancel.run();
         };
         JPanel heading = new JPanel(new BorderLayout(8, 6)); heading.setOpaque(false);
-        if (!editing) {
-            JLabel title = new JLabel("Новый комментарий"); title.setFont(title.getFont().deriveFont(Font.BOLD));
-            JButton close = new JButton(AllIcons.Actions.Close); close.setBorderPainted(false); close.setContentAreaFilled(false);
-            close.setToolTipText("Свернуть с сохранением черновика"); close.getAccessibleContext().setAccessibleName("Свернуть черновик комментария");
-            close.addActionListener(e -> collapse.run());
-            JPanel top = new JPanel(new BorderLayout(4, 0)); top.setOpaque(false); top.add(title, BorderLayout.CENTER); top.add(close, BorderLayout.EAST);
-            heading.add(top, BorderLayout.NORTH);
-        }
-        heading.add(locationLabel, BorderLayout.SOUTH); add(heading, BorderLayout.NORTH);
+        if (editing) {
+            heading.add(locationLabel, BorderLayout.SOUTH); add(heading, BorderLayout.NORTH);
+        } else setToolTipText(location);
         input.setText(initial); input.setRows(3); input.setColumns(1);
-        input.setLineWrap(true); input.setWrapStyleWord(true); input.setFont(CommentCardPainter.font()); input.setMargin(JBUI.insets(8));
+        input.setLineWrap(true); input.setWrapStyleWord(true); input.setFont(CommentCardPainter.font()); input.setMargin(JBUI.insets(editing ? 8 : 0));
         UndoManager undo = new UndoManager(); input.getDocument().addUndoableEditListener(undo);
         int menuMask = SystemInfo.isMac ? InputEvent.META_DOWN_MASK : InputEvent.CTRL_DOWN_MASK;
         input.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_Z, menuMask), "undo-comment");
@@ -67,15 +61,19 @@ final class CommentEditorForm extends JPanel {
         });
         input.getAccessibleContext().setAccessibleName("Текст комментария OpenCode");
         scroll = new JScrollPane(input); scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        if (!editing) {
+            scroll.setBorder(BorderFactory.createEmptyBorder());
+            input.setOpaque(false); scroll.setOpaque(false); scroll.getViewport().setOpaque(false);
+        }
         add(scroll, BorderLayout.CENTER);
-        save = new JButton(editing ? "Сохранить" : (SystemInfo.isMac ? "В очередь  ⌘↵" : "В очередь  Ctrl+Enter"));
+        save = new JButton(editing ? "Сохранить" : "↑");
         if (!editing) save.getAccessibleContext().setAccessibleName("В очередь");
         save.setToolTipText(SystemInfo.isMac ? "Добавить в очередь · ⌘Enter" : "Добавить в очередь · Ctrl+Enter");
         if (!editing) {
             save.setBackground(JBColor.namedColor("Button.default.startBackground", new JBColor(0x315FBD, 0x4676D8)));
             save.setForeground(JBColor.namedColor("Button.default.foreground", JBColor.WHITE));
         }
-        JButton cancelButton = new JButton(editing ? "Отмена" : "Свернуть");
+        JButton cancelButton = new JButton(editing ? "Отмена" : "−");
         cancelButton.addActionListener(e -> collapse.run());
         actions.setOpaque(false); actions.add(cancelButton); actions.add(save);
         if (editing) {
@@ -95,13 +93,24 @@ final class CommentEditorForm extends JPanel {
         JPanel footer = new JPanel(new BorderLayout(4, 6)); footer.setOpaque(false);
         error.setForeground(JBColor.namedColor("Label.errorForeground", JBColor.RED)); error.setVisible(false);
         footer.add(error, BorderLayout.NORTH);
-        if (!editing) {
-            JLabel hint = creationHint; hint.setFont(locationLabel.getFont()); hint.setForeground(locationLabel.getForeground());
-            // Below narrow editors even the hint wraps; controls remain native and keyboard accessible.
-            hint.setText("<html>Комментарий попадёт в черновик ревью</html>");
-            footer.add(hint, BorderLayout.CENTER);
+        if (editing) {
+            footer.add(actions, BorderLayout.SOUTH); add(footer, BorderLayout.SOUTH);
+        } else {
+            cancelButton.setToolTipText("Свернуть черновик");
+            cancelButton.getAccessibleContext().setAccessibleName("Свернуть черновик комментария");
+            for (JButton button : new JButton[]{save, cancelButton}) {
+                button.setMargin(JBUI.emptyInsets());
+                button.setPreferredSize(JBUI.size(26, 24));
+                button.putClientProperty("JButton.buttonType", "square");
+            }
+            cancelButton.setBorderPainted(false); cancelButton.setContentAreaFilled(false);
+            actions.removeAll(); actions.setLayout(new FlowLayout(FlowLayout.RIGHT, JBUI.scale(2), 0));
+            actions.add(cancelButton); actions.add(save);
+            JPanel rail = new JPanel(new BorderLayout()); rail.setOpaque(false);
+            rail.setBorder(JBUI.Borders.emptyLeft(6)); rail.add(actions, BorderLayout.SOUTH);
+            add(rail, BorderLayout.EAST);
+            add(error, BorderLayout.SOUTH);
         }
-        footer.add(actions, BorderLayout.SOUTH); add(footer, BorderLayout.SOUTH);
         save.addActionListener(event -> save());
         getInputMap(WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, menuMask), "save-comment");
         getActionMap().put("save-comment", new AbstractAction() {
@@ -137,22 +146,21 @@ final class CommentEditorForm extends JPanel {
     }
 
     void onChanged(Consumer<String> listener) { changed = listener; }
-    void setLocation(String location) { locationLabel.setText(location); locationLabel.setToolTipText(location); }
+    void setLocation(String location) { locationLabel.setText(location); locationLabel.setToolTipText(location); setToolTipText(location); }
     void setEditorWidth(int width, Runnable listener) { editorWidth = Math.max(120, width); sizeChanged = listener; updateSize(); }
     private void updateSize() {
         int width = editorWidth > 0 ? editorWidth : JBUI.scale(350);
-        int available = Math.max(1, width - getInsets().left - getInsets().right - JBUI.scale(24));
-        FontMetrics metrics = input.getFontMetrics(input.getFont()); int rows = 0;
-        for (String line : input.getText().split("\\n", -1)) rows += Math.max(1, (int) Math.ceil((double) metrics.stringWidth(line) / available));
-        rows = Math.max(3, Math.min(9, rows)); input.setRows(rows);
-        scroll.setPreferredSize(new Dimension(available, metrics.getHeight() * rows + JBUI.scale(18)));
-        if (!editing) {
-            int hintRows = Math.max(1, (int) Math.ceil((double) creationHint.getFontMetrics(creationHint.getFont()).stringWidth("Комментарий попадёт в черновик ревью") / Math.max(1, width - getInsets().left - getInsets().right)));
-            creationHint.setPreferredSize(new Dimension(available, hintRows * creationHint.getFontMetrics(creationHint.getFont()).getHeight()));
-            boolean narrow = width < JBUI.scale(330);
-            if (narrow && !(actions.getLayout() instanceof GridLayout)) actions.setLayout(new GridLayout(0, 1, 0, JBUI.scale(5)));
-            else if (!narrow && !(actions.getLayout() instanceof FlowLayout)) actions.setLayout(new FlowLayout(FlowLayout.RIGHT, JBUI.scale(6), 0));
-        }
+        int rail = editing ? 0 : JBUI.scale(62);
+        int available = Math.max(1, width - getInsets().left - getInsets().right - rail);
+        // Ask Swing's wrapped text view for its actual height, including word wrapping and tabs.
+        int textWidth = Math.max(1, available - scroll.getVerticalScrollBar().getPreferredSize().width);
+        measurement.setFont(input.getFont()); measurement.setLineWrap(true); measurement.setWrapStyleWord(true);
+        measurement.setText(input.getText()); measurement.setSize(textWidth, Integer.MAX_VALUE);
+        FontMetrics metrics = input.getFontMetrics(input.getFont());
+        int rows = Math.max(editing ? 3 : 1, Math.min(editing ? 9 : 6,
+            (int) Math.ceil(measurement.getPreferredSize().height / metrics.getHeight())));
+        input.setRows(rows);
+        scroll.setPreferredSize(new Dimension(available, metrics.getHeight() * rows + (editing ? JBUI.scale(18) : 0)));
         setPreferredSize(null); setPreferredSize(new Dimension(width, super.getPreferredSize().height));
         revalidate(); repaint(); sizeChanged.run();
     }
@@ -163,7 +171,7 @@ final class CommentEditorForm extends JPanel {
             g.setColor(JBColor.namedColor("Panel.background", new JBColor(0xF5F7FB, 0x292C32)));
             g.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, JBUI.scale(10), JBUI.scale(10));
             g.setColor(JBColor.border()); g.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, JBUI.scale(10), JBUI.scale(10));
-            if (!editing) { g.setColor(JBColor.namedColor("Component.focusColor", new JBColor(0x315FBD, 0x548AF7))); g.fillRect(0, JBUI.scale(8), JBUI.scale(2), Math.max(0, getHeight() - JBUI.scale(16))); }
+
         } finally { g.dispose(); }
     }
     static String validation(String text) {
