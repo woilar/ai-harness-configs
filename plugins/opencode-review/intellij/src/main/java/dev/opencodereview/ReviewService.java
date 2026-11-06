@@ -22,6 +22,7 @@ import java.util.function.BooleanSupplier;
 public final class ReviewService implements PersistentStateComponent<ReviewService.QueueState>, Disposable {
     public static final class QueueState {
         public ArrayList<ReviewComment> comments = new ArrayList<>();
+        public ArrayList<ReviewComment> creationDrafts = new ArrayList<>();
         public PendingTransfer pending;
         public ArrayList<ReviewThread> threads=new ArrayList<>();
         public ArrayList<String> removedThreadIDs=new ArrayList<>();
@@ -32,7 +33,6 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
     private final Map<String, RangeMarker> anchors = new HashMap<>();
     private final Map<Editor, ReviewEditorSession> editors = new IdentityHashMap<>();
     private final List<Runnable> listeners = new ArrayList<>();
-    private final Map<Editor, NewCommentPopup> creationPopups = new IdentityHashMap<>();
     private final Map<String, Runnable> openInputs = new HashMap<>();
     private final Map<String, BooleanSupplier> autosaves = new HashMap<>();
     private boolean started;
@@ -47,6 +47,11 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
         for (ReviewThread thread : state.threads) copy.threads.add(new ReviewThread(thread));
         for (ReviewComment note : state.lastTransferred) copy.lastTransferred.add(new ReviewComment(note));
         for (ReviewComment note : state.comments) copy.comments.add(new ReviewComment(note));
+        for (ReviewComment note : state.creationDrafts) {
+            var draft = new ReviewComment(note);
+            draft.creationTextUtf8 = Base64.getEncoder().encodeToString(note.comment.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            draft.comment = ""; copy.creationDrafts.add(draft);
+        }
         return copy;
     }
     @Override public synchronized void loadState(QueueState loaded) {
@@ -62,6 +67,22 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
         if (loaded.comments != null) for (ReviewComment note : loaded.comments) {
             if (validNote(note) && !state.removedThreadIDs.contains(note.discussionID()) && !acknowledgedMessage(note) && state.comments.size() < 100)
                 state.comments.add(new ReviewComment(note));
+        }
+        long draftBudget = state.comments.stream().mapToLong(n -> n.documentSnapshot.length()).sum();
+        if (loaded.creationDrafts != null) for (ReviewComment stored : loaded.creationDrafts) {
+            if (stored == null) continue;
+            var note = new ReviewComment(stored);
+            if (note.creationTextUtf8 != null && !note.creationTextUtf8.isEmpty()) {
+                try { note.comment = new String(Base64.getDecoder().decode(note.creationTextUtf8), java.nio.charset.StandardCharsets.UTF_8); }
+                catch (IllegalArgumentException invalid) { continue; }
+            }
+            note.creationTextUtf8 = "";
+            if (!validNote(note) || note.comment.length() > 10000 || note.code.length() > 20000
+                || note.documentSnapshot.length() > 1000000 || state.comments.size() + state.creationDrafts.size() >= 100
+                || draftBudget + note.documentSnapshot.length() > 10000000
+                || state.comments.stream().anyMatch(n -> n.id.equals(note.id))
+                || state.creationDrafts.stream().anyMatch(n -> n.id.equals(note.id))) continue;
+            state.creationDrafts.add(new ReviewComment(note)); draftBudget += note.documentSnapshot.length();
         }
     }
     private boolean acknowledgedMessage(ReviewComment note) {
@@ -85,13 +106,13 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
     public int restoreTransferred() {
         int count = 0;
         synchronized (this) {
-            long budget = state.comments.stream().mapToLong(n -> n.documentSnapshot.length()).sum();
-            var ids = new HashSet<String>(); state.comments.forEach(n -> ids.add(n.id));
+            long budget = java.util.stream.Stream.concat(state.comments.stream(), state.creationDrafts.stream()).mapToLong(n -> n.documentSnapshot.length()).sum();
+            var ids = new HashSet<String>(); state.comments.forEach(n -> ids.add(n.id)); state.creationDrafts.forEach(n -> ids.add(n.id));
             var iterator = state.lastTransferred.iterator();
             while (iterator.hasNext()) {
                 ReviewComment note = iterator.next();
                 if (ids.contains(note.id)||state.removedThreadIDs.contains(note.discussionID())) { iterator.remove(); continue; }
-                if (state.comments.size() >= 100 || budget + note.documentSnapshot.length() > 10000000) continue;
+                if (state.comments.size() + state.creationDrafts.size() >= 100 || budget + note.documentSnapshot.length() > 10000000) continue;
                 var restored=new ReviewComment(note);
                 // Explicit recovery is a new outgoing turn, not a replay of an acknowledged ID.
                 if(state.threads.stream().anyMatch(t->t.id.equals(note.discussionID())&&t.turns.stream().anyMatch(turn->turn.id.equals(note.id)))) {
@@ -137,8 +158,6 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
         factory.addEditorFactoryListener(new EditorFactoryListener() {
             @Override public void editorCreated(EditorFactoryEvent event) { attach(event.getEditor()); }
             @Override public void editorReleased(EditorFactoryEvent event) {
-                NewCommentPopup popup = creationPopups.remove(event.getEditor());
-                if (popup != null) Disposer.dispose(popup);
                 ReviewEditorSession session = editors.remove(event.getEditor());
                 if (session != null) Disposer.dispose(session);
                 locations.remove(event.getEditor());
@@ -206,9 +225,6 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
     }
 
     public void addFromEditor(Editor editor, int requestedLine) {
-        NewCommentPopup current = creationPopups.get(editor);
-        if (current != null) { current.focusInput(); return; }
-        if (snapshot().size() >= 100) { error("В очереди уже 100 комментариев. Перенеси часть в OpenCode."); return; }
         ReviewLocation location = locations.get(editor);
         if (location == null) { attach(editor); location = locations.get(editor); }
         if (location == null) { error("Выбери файл или сторону diff в редакторе."); return; }
@@ -226,31 +242,54 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
         ReviewComment note = ReviewComment.capture(location.path(), document.getText(), start, end);
         location.apply(note);
         if("WORKTREE".equals(note.side))note.documentSnapshot=document.getText();
-        if (snapshot().stream().mapToInt(n -> n.documentSnapshot.length()).sum() + note.documentSnapshot.length() > 10000000) { error("Очередь снимков превысила 10 МБ. Перенеси накопленные замечания."); return; }
-        if(note.documentSnapshot.length()>1000000){error("Снимок файла превышает 1 МБ. Выбери меньший файл для обсуждения.");return;}
-        if (note.code.length() > 20000) { error("Выдели меньший фрагмент: максимум 20 000 символов кода."); return; }
-        // Keep the code anchor alive while the non-modal form is open.
-        RangeMarker anchor = document.createRangeMarker(note.startOffset, note.endOffset);
-        boolean[] stored = {false};
-        NewCommentPopup popup = new NewCommentPopup(editor, note, text -> {
-            if (project.isDisposed()) return "Проект закрыт.";
-            synchronized (this) {
-                if (state.comments.size() >= 100) return "В очереди уже 100 комментариев.";
-                note.comment = text;
-                state.comments.add(note); anchors.put(note.id, anchor); stored[0] = true;
-            }
-            documentChanged(document);
-            return null;
-        }, () -> {
-            creationPopups.remove(editor);
-            if (!stored[0]) anchor.dispose();
-            endEditing(note.id);
-        });
-        creationPopups.put(editor, popup);
-        Disposer.register(this, popup);
-        beginEditing(note.id, popup::focusInput);
-        try { popup.show(editor, requestedLine >= 0 ? requestedLine : note.startLine - 1); }
-        catch (RuntimeException failure) { Disposer.dispose(popup); throw failure; }
+        for (ReviewComment draft : creationDrafts()) if (location.matches(draft)
+            && draft.startLine == note.startLine && draft.endLine == note.endLine) {
+            editors.get(editor).openCreation(draft.id); return;
+        }
+        String problem = createCommentDraft(note);
+        if (problem != null) { error(problem); return; }
+        anchors.put(note.id, document.createRangeMarker(note.startOffset, note.endOffset));
+        changed();
+        editors.get(editor).openCreation(note.id);
+    }
+
+    synchronized List<ReviewComment> creationDrafts() {
+        return state.creationDrafts.stream().map(ReviewComment::new).toList();
+    }
+    String createCommentDraft(ReviewComment note) {
+        synchronized (this) {
+            if (state.comments.size() + state.creationDrafts.size() >= 100) return "Уже 100 комментариев и черновиков. Перенеси часть в OpenCode.";
+            if (note.documentSnapshot.length() > 1000000) return "Снимок файла превышает 1 МБ. Выбери меньший файл для обсуждения.";
+            if (note.code.length() > 20000) return "Выдели меньший фрагмент: максимум 20 000 символов кода.";
+            if (java.util.stream.Stream.concat(state.comments.stream(), state.creationDrafts.stream()).mapToLong(n -> n.documentSnapshot.length()).sum() + note.documentSnapshot.length() > 10000000)
+                return "Черновики и очередь снимков превысили 10 МБ.";
+            if (state.creationDrafts.stream().anyMatch(n -> n.id.equals(note.id)) || state.comments.stream().anyMatch(n -> n.id.equals(note.id)))
+                return "Комментарий уже существует.";
+            state.creationDrafts.add(new ReviewComment(note));
+        }
+        return null;
+    }
+    synchronized void saveCreationDraft(String id, String text) {
+        if (text.length() > 10000) return;
+        for (var draft : state.creationDrafts) if (draft.id.equals(id)) { draft.comment = text; return; }
+    }
+    String queueCreationDraft(String id, String text) {
+        String invalid = CommentEditorForm.validation(text);
+        if (invalid != null) return invalid;
+        synchronized (this) {
+            var draft = state.creationDrafts.stream().filter(n -> n.id.equals(id)).findFirst().orElse(null);
+            if (draft == null) return "Черновик уже добавлен или удалён.";
+            if (state.comments.size() >= 100) return "В очереди уже 100 комментариев.";
+            draft.comment = text.strip(); state.creationDrafts.remove(draft); state.comments.add(draft);
+        }
+        changed(); return null;
+    }
+    void discardCreationDraft(String id) {
+        synchronized (this) {
+            if (!state.creationDrafts.removeIf(n -> n.id.equals(id))) return;
+            RangeMarker marker = anchors.remove(id); if (marker != null) marker.dispose();
+        }
+        changed();
     }
 
     public void edit(ReviewComment note) {
@@ -360,7 +399,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
     }
     public synchronized List<ReviewThread> threads(){return state.threads.stream().map(ReviewThread::new).toList();}
     synchronized ReviewThread thread(String id){return state.threads.stream().filter(t->t.id.equals(id)).findFirst().map(ReviewThread::new).orElse(null);}
-    private List<ReviewComment> anchoredNotes(){var notes=new ArrayList<>(state.comments);for(var t:state.threads)notes.add(t.root);return notes;}
+    private List<ReviewComment> anchoredNotes(){var notes=new ArrayList<>(state.comments);notes.addAll(state.creationDrafts);for(var t:state.threads)notes.add(t.root);return notes;}
     List<ReviewComment> displayComments(){
         var notes=new ArrayList<ReviewComment>();for(var n:snapshot())if(n.threadID.isEmpty()&&thread(n.id)==null)notes.add(n);
         for(var t:threads())if(!t.resolved||t.expanded)notes.add(t.card());return notes;
@@ -408,8 +447,10 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
         synchronized(this){
             var t=state.threads.stream().filter(x->x.id.equals(id)).findFirst().orElse(null);if(t==null)return "Обсуждение не найдено.";
             String error=CommentEditorForm.validation(t.replyDraft);if(error!=null)return error;
-            if(state.comments.size()>=100)return "В очереди уже 100 замечаний.";
+            if(state.comments.size()+state.creationDrafts.size()>=100)return "Уже 100 комментариев и черновиков.";
             if(state.comments.stream().anyMatch(n->n.threadID.equals(id)))return "Уточнение уже в очереди. Измени его в панели Review.";
+            if (java.util.stream.Stream.concat(state.comments.stream(), state.creationDrafts.stream()).mapToLong(n -> n.documentSnapshot.length()).sum() + t.root.documentSnapshot.length() > 10000000)
+                return "Черновики и очередь снимков превысили 10 МБ.";
             var n=new ReviewComment(t.root);n.id=UUID.randomUUID().toString();n.threadID=t.id;n.boundSessionID="";n.boundDirectory="";
             n.replyContext="";if(!t.turns.isEmpty()){var last=t.turns.getLast();n.replyContext="Вы: "+last.text+"\nOpenCode: "+last.answer;if(n.replyContext.length()>12000)n.replyContext=n.replyContext.substring(0,12000)+"…";}
             n.comment=t.replyDraft.strip();n.included=true;state.comments.add(n);t.replyDraft="";t.resolved=false;
@@ -473,6 +514,6 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
     private void error(String message) { Messages.showWarningDialog(project, message, "OpenCode Review"); }
     @Override public void dispose() {
         synchronized (this) { anchors.values().forEach(RangeMarker::dispose); anchors.clear(); }
-        locations.clear(); creationPopups.clear(); openInputs.clear(); autosaves.clear(); editors.clear(); listeners.clear();
+        locations.clear(); openInputs.clear(); autosaves.clear(); editors.clear(); listeners.clear();
     }
 }

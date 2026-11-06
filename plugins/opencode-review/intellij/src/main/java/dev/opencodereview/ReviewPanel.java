@@ -74,7 +74,7 @@ final class ReviewPanel extends JPanel implements Disposable {
         boolean pending=service.pending()!=null;stopWait.setVisible(pending&&!busy);
         send.setText(pending?"Проверить отправку":"Добавить в OpenCode");
         send.setEnabled(!busy && (pending || selected>0&&!service.hasManualInput()));
-        send.setToolTipText(pending?"Проверить прежнюю отправку без повторной отправки":service.hasManualInput()?"Добавь или отмени новый комментарий":"Проверить текст и отправить в текущую сессию терминала");
+        send.setToolTipText(pending?"Проверить прежнюю отправку без повторной отправки":service.hasManualInput()?"Добавь новый комментарий в очередь или сверни черновик":"Проверить текст и отправить в текущую сессию терминала");
         String next=new Gson().toJson(notes);
         if (!next.equals(rendered)) {
             rendered=next;cards.removeAll();

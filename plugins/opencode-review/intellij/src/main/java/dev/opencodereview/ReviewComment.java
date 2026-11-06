@@ -15,6 +15,8 @@ public final class ReviewComment {
     public String revisionLabel = "";
     public String documentSnapshot = "";
     public String comment = "";
+    /** UTF-8 Base64 only in persisted creation drafts; XMLB drops supplementary characters. */
+    public String creationTextUtf8 = "";
     public String replyContext = "";
     public String threadID = "", boundSessionID = "", boundDirectory = "";
     public int startLine = 1;
@@ -28,6 +30,7 @@ public final class ReviewComment {
 
     public ReviewComment(ReviewComment other) {
         replyContext=other.replyContext;threadID=other.threadID;boundSessionID=other.boundSessionID;boundDirectory=other.boundDirectory;
+        creationTextUtf8 = other.creationTextUtf8;
         id = other.id; filePath = other.filePath; code = other.code; comment = other.comment;
         startLine = other.startLine; endLine = other.endLine;
         side = other.side; revision = other.revision; revisionLabel = other.revisionLabel; documentSnapshot = other.documentSnapshot;

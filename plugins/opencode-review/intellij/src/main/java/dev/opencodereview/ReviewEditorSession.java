@@ -32,6 +32,12 @@ final class ReviewEditorSession implements Disposable {
     private final Map<String, Boolean> staleRanges = new HashMap<>();
     private final Map<String, Inlay<InlineCommentRenderer>> inlineNotes = new LinkedHashMap<>();
     private final Map<String, EditorDraft> editing = new LinkedHashMap<>();
+    private final Map<String, CreationView> creations = new LinkedHashMap<>();
+    private static final class CreationView {
+        final NewCommentComposer composer; final Inlay<?> inlay;
+        CreationView(NewCommentComposer composer, Inlay<?> inlay) { this.composer = composer; this.inlay = inlay; }
+        void dispose() { composer.dispose(); if (inlay.isValid()) inlay.dispose(); }
+    }
     private final Map<String, ThreadView> discussions=new LinkedHashMap<>();
     private static final class ThreadView { final ThreadCard card;final Inlay<?> inlay;ThreadView(ThreadCard card,Inlay<?> inlay){this.card=card;this.inlay=inlay;} }
     private final Map<String, Integer> priorities = new HashMap<>();
@@ -103,6 +109,8 @@ final class ReviewEditorSession implements Disposable {
             if (!disposed && !editor.isDisposed() && (oldArea == null || oldArea.width != event.getNewRectangle().width))
                 {
                 inlineNotes.values().forEach(Inlay::update);
+                creations.values().forEach(view -> view.composer.setEditorWidth(composerWidth(), () -> { if (view.inlay.isValid()) WriteIntentReadAction.run(view.inlay::update); }));
+                editing.values().forEach(draft -> draft.form.setEditorWidth(composerWidth(), () -> { if (draft.inlay != null && draft.inlay.isValid()) WriteIntentReadAction.run(draft.inlay::update); }));
                 discussions.values().forEach(view->view.card.setEditorWidth(threadWidth(),view.inlay::update));
             }
         };
@@ -117,6 +125,13 @@ final class ReviewEditorSession implements Disposable {
     }
 
     private int threadWidth(){return Math.max(160,Math.min(com.intellij.util.ui.JBUI.scale(620),editor.getScrollingModel().getVisibleArea().width-24));}
+
+    private int composerWidth() { return Math.max(160, Math.min(com.intellij.util.ui.JBUI.scale(760), editor.getScrollingModel().getVisibleArea().width - com.intellij.util.ui.JBUI.scale(24))); }
+
+    void openCreation(String id) {
+        refresh();
+        var view = creations.get(id); if (view != null) view.composer.expand();
+    }
 
     void refresh() {
         if (disposed || editor.isDisposed()) return;
@@ -172,6 +187,29 @@ final class ReviewEditorSession implements Disposable {
             entry.getValue().dispose(); return true;
         });
         for (String id : List.copyOf(editing.keySet())) if (!liveIds.contains(id)) finishInlineEdit(id);
+        Set<String> liveDrafts = new HashSet<>();
+        for (ReviewComment note : service.creationDrafts()) if (location.matches(note) && editor instanceof EditorEx ex) {
+            liveDrafts.add(note.id);
+            int start = Math.max(0, Math.min(note.startLine - 1, editor.getDocument().getLineCount() - 1));
+            int end = Math.max(start, Math.min(note.endLine - 1, editor.getDocument().getLineCount() - 1));
+            var range = editor.getMarkupModel().addRangeHighlighter(editor.getDocument().getLineStartOffset(start), editor.getDocument().getLineEndOffset(end),
+                HighlighterLayer.ADDITIONAL_SYNTAX, attributes(note.changed, false), HighlighterTargetArea.LINES_IN_RANGE);
+            notes.add(range);
+            range.setLineMarkerRenderer((ed, graphics, bounds) -> { graphics.setColor(accent(note.changed)); graphics.fillRect(bounds.x, bounds.y, com.intellij.util.ui.JBUI.scale(2), bounds.height); });
+            var old = creations.get(note.id);
+            int offset = editor.getDocument().getLineEndOffset(end);
+            if (old != null && (!old.inlay.isValid() || old.inlay.getOffset() != offset)) { old.dispose(); creations.remove(note.id); old = null; }
+            if (old == null) {
+                var composer = new NewCommentComposer(service, note); composer.setEditorWidth(composerWidth(), () -> {});
+                var inlay = EditorEmbeddedComponentManager.getInstance().addComponent(ex, composer,
+                    new EditorEmbeddedComponentManager.Properties(EditorEmbeddedComponentManager.ResizePolicy.none(), null, true, false, priority(note.id), offset));
+                if (inlay != null) {
+                    creations.put(note.id, new CreationView(composer, inlay));
+                    composer.setEditorWidth(composerWidth(), () -> { if (inlay.isValid()) WriteIntentReadAction.run(inlay::update); });
+                } else composer.dispose();
+            } else old.composer.update(note);
+        }
+        creations.entrySet().removeIf(e -> { if (liveDrafts.contains(e.getKey())) return false; e.getValue().dispose(); return true; });
         for (var entry : byLine.entrySet()) {
             List<ReviewComment> comments = entry.getValue();
             RangeHighlighter marker = markerAt(entry.getKey());
@@ -220,7 +258,7 @@ final class ReviewEditorSession implements Disposable {
                 return error;
             });
         }, () -> WriteIntentReadAction.run(() -> finishInlineEdit(note.id)));
-        form.setPreferredSize(new java.awt.Dimension(Math.max(160,Math.min(350,editor.getScrollingModel().getVisibleArea().width-10)),form.getPreferredSize().height));
+        form.setEditorWidth(composerWidth(), () -> {});
         if (!service.beginAutoEditing(note.id, form::focusInput, form::save)) return;
         EditorDraft draft = new EditorDraft(form);
         editing.put(note.id, draft);
@@ -237,6 +275,10 @@ final class ReviewEditorSession implements Disposable {
         draft.inlay = EditorEmbeddedComponentManager.getInstance().addComponent(ex, draft.form,
             new EditorEmbeddedComponentManager.Properties(EditorEmbeddedComponentManager.ResizePolicy.none(), null,
                 true, false, priority(note.id), editor.getDocument().getLineEndOffset(line)));
+        formSize(draft);
+    }
+    private void formSize(EditorDraft draft) {
+        draft.form.setEditorWidth(composerWidth(), () -> { if (draft.inlay != null && draft.inlay.isValid()) WriteIntentReadAction.run(draft.inlay::update); });
     }
 
     private int priority(String id) { return priorities.computeIfAbsent(id, ignored -> nextPriority--); }
@@ -298,6 +340,7 @@ final class ReviewEditorSession implements Disposable {
         notes.clear();
         inlineNotes.values().forEach(Inlay::dispose); inlineNotes.clear();
         discussions.values().forEach(v->v.inlay.dispose());discussions.clear();
+        creations.values().forEach(CreationView::dispose); creations.clear();
         priorities.clear();
     }
 }
