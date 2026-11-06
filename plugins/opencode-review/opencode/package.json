@@ -1,0 +1,12 @@
+{
+  "name": "opencode-review-bridge",
+  "version": "3.0.0",
+  "type": "module",
+  "exports": {
+    "./tui": "./tui.js",
+    ".": "./server.js"
+  },
+  "engines": {
+    "opencode": ">=2.2.5 <3"
+  }
+}

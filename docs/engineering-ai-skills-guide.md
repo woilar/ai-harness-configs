@@ -19,15 +19,15 @@
 
 ## Какие файлы за что отвечают
 
-- [role-orchestration.md](../shared/agent/role-orchestration.md) — постоянно доступный
+- [role-orchestration.md](../framework/agent/role-orchestration.md) — постоянно доступный
   маршрутизатор: выбор роли, основные границы, четыре фазы и команды.
-- [policy-details.md](../shared/agent/references/policy-details.md) — короткий индекс
+- [policy-details.md](../framework/agent/references/policy-details.md) — короткий индекс
   отдельных модулей: planning, task-state, execution, validation, handoff,
   learning-journal, metrics и plan-template. Это не общий файл всех правил.
-- [Copilot](../shared/agent/skills/copilot/SKILL.md),
-  [Coach](../shared/agent/skills/coach/SKILL.md),
-  [Executor](../shared/agent/skills/executor/SKILL.md) — тактика активной роли.
-- [Научная основа](../shared/agent/skills/coach/references/scientific-basis.md) —
+- [Copilot](../framework/agent/skills/copilot/SKILL.md),
+  [Coach](../framework/agent/skills/coach/SKILL.md),
+  [Executor](../framework/agent/skills/executor/SKILL.md) — тактика активной роли.
+- [Научная основа](../framework/agent/skills/coach/references/scientific-basis.md) —
   обоснование и границы переноса исследований на инженерное обучение.
 - Java impact checklist в папке активного skill — только при Diff Review после кода.
 

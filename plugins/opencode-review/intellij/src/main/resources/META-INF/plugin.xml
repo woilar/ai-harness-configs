@@ -1,0 +1,27 @@
+<idea-plugin>
+  <id>dev.opencodereview</id><name>OpenCode Review</name><version>3.0.0</version>
+  <vendor>Local tools</vendor>
+  <description>Inline review comments for OpenCode v2 terminal sessions. Review both sides of a diff and append a batch to the last active OpenCode terminal. Sending stays manual.</description>
+  <idea-version since-build="263" until-build="263.*"/>
+  <depends>com.intellij.modules.platform</depends><depends>org.jetbrains.plugins.terminal</depends>
+  <dependencies><module name="intellij.terminal.frontend"/></dependencies>
+  <extensions defaultExtensionNs="com.intellij">
+    <toolWindow id="OpenCode Review" anchor="right" factoryClass="dev.opencodereview.ReviewToolWindowFactory"/>
+    <postStartupActivity implementation="dev.opencodereview.ReviewStartupActivity"/>
+    <diff.DiffExtension implementation="dev.opencodereview.ReviewDiffExtension"/>
+  </extensions>
+  <actions>
+    <action id="dev.opencodereview.addComment" class="dev.opencodereview.AddCommentAction" text="OpenCode: Добавить комментарий" description="Добавить замечание к строке или выделенному диапазону">
+      <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift R"/>
+      <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta alt shift R"/>
+      <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta alt shift R"/>
+      <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+    </action>
+    <action id="dev.opencodereview.previewTransfer" class="dev.opencodereview.PreviewTransferAction" text="OpenCode: Предпросмотр и перенос" description="Просмотреть выбранную пачку и отправить в текущую сессию OpenCode">
+      <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift Y"/>
+      <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta alt shift Y"/>
+      <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta alt shift Y"/>
+    </action>
+    <action id="dev.opencodereview.testDiff" class="dev.opencodereview.ReviewSnapshotAction" text="OpenCode Review: Сравнить с сохранённым файлом" description="Открыть side-by-side diff документа с сохранённым содержимым"/>
+  </actions>
+</idea-plugin>
