@@ -41,6 +41,21 @@ public final class CommentEditorFormTest {
             check(undo.input().getText().equals("Текст"), "Undo is local to comment text");
             undo.input().getActionMap().get("redo-comment").actionPerformed(new ActionEvent(undo.input(), 0, ""));
             check(undo.input().getText().equals("Текст дополнение"), "Redo restores comment edit");
+            AtomicInteger collapsed = new AtomicInteger(); ArrayList<String> creation = new ArrayList<>();
+            CommentEditorForm draft = new CommentEditorForm("Sample.java:4–6", "Черновик", false, text -> { creation.add(text); return null; }, collapsed::incrementAndGet);
+            draft.getActionMap().get("cancel-comment").actionPerformed(new ActionEvent(draft, 0, ""));
+            check(collapsed.get() == 1 && creation.isEmpty() && draft.input().getText().equals("Черновик"), "collapse preserves raw input and does not queue");
+            draft.getActionMap().get("save-comment").actionPerformed(new ActionEvent(draft, 0, ""));
+            check(creation.equals(java.util.List.of("Черновик")), "collapsed form can resume and queue exactly once");
+            var grow = new CommentEditorForm("Sample.java:4–6", "Short", false, text -> null, () -> {});
+            grow.setEditorWidth(620, () -> {}); int shortHeight = grow.getPreferredSize().height;
+            grow.input().setText("Line\n".repeat(8));
+            check(grow.getPreferredSize().height > shortHeight, "creation field grows with multiline text");
+            grow.input().setText("long word ".repeat(30)); grow.setEditorWidth(260, () -> {}); int narrowHeight = grow.getPreferredSize().height;
+            grow.setEditorWidth(720, () -> {});
+            check(grow.getPreferredSize().height < narrowHeight && grow.getPreferredSize().width == 720, "wrapped input and footer adapt to editor width");
+            grow.input().setText("x".repeat(10000)); grow.input().append("overflow");
+            check(grow.input().getText().length() == 10000, "typing beyond limit cannot produce an unpersisted draft");
             System.out.println("CommentEditorForm: " + checks + " checks passed");
         });
     }
