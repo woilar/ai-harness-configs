@@ -124,11 +124,16 @@ class InstallTests(unittest.TestCase):
         self.assertFalse(self.target.exists())
 
     def test_missing_workflow_module_stops_before_install(self):
-        (self.repo / 'shared/agent/references/planning.md').unlink()
-        result = self.run_install()
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('planning.md', result.stderr)
-        self.assertFalse(self.target.exists())
+        for name in ('planning.md', 'plan-inbox.md'):
+            with self.subTest(module=name):
+                module = self.repo / 'shared/agent/references' / name
+                original = module.read_text()
+                module.unlink()
+                result = self.run_install()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(name, result.stderr)
+                self.assertFalse(self.target.exists())
+                module.write_text(original)
 
     def test_router_and_module_links_resolve_after_install(self):
         result = self.run_install()

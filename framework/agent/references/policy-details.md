@@ -6,6 +6,7 @@ AGENTS / role-orchestration.md определяет событие и обяза
 | Событие | Модуль |
 | --- | --- |
 | Начало/пересмотр планирования | [planning.md](planning.md) |
+| Содержательный черновик, новая редакция, замечания/восстановление плана в Inbox | [plan-inbox.md](plan-inbox.md) |
 | Рабочие MD, прогресс и случайные находки | [task-state.md](task-state.md) |
 | Явно отложенные находки/решения | [inbox.md](inbox.md) |
 | Исполнение, Fast-Track, Low Energy, /strict; атомарный шаг и четыре фазы | [execution.md](execution.md) |
