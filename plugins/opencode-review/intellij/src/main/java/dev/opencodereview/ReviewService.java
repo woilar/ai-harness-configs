@@ -60,9 +60,21 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
         if (loaded.lastTransferred != null) for (ReviewComment note : loaded.lastTransferred)
             if (validNote(note) && !state.removedThreadIDs.contains(note.discussionID()) && state.lastTransferred.size() < 100) state.lastTransferred.add(new ReviewComment(note));
         if (loaded.comments != null) for (ReviewComment note : loaded.comments) {
-            if (validNote(note) && !state.removedThreadIDs.contains(note.discussionID()) && state.comments.size() < 100)
+            if (validNote(note) && !state.removedThreadIDs.contains(note.discussionID()) && !acknowledgedMessage(note) && state.comments.size() < 100)
                 state.comments.add(new ReviewComment(note));
         }
+    }
+    private boolean acknowledgedMessage(ReviewComment note) {
+        // An unknown transfer must retain its original payload and operation ID for receipt checks.
+        if(state.pending!=null&&state.pending.comments.stream().anyMatch(n->Objects.equals(n.id,note.id)))return false;
+        for(var thread:state.threads)if(thread.id.equals(note.discussionID())) {
+            var root=thread.root;
+            if(!Objects.equals(root.filePath,note.filePath)||!Objects.equals(root.code,note.code)
+                ||!Objects.equals(root.side,note.side)||!Objects.equals(root.revision,note.revision)
+                ||!Objects.equals(root.revisionLabel,note.revisionLabel)||!Objects.equals(root.documentSnapshot,note.documentSnapshot))return false;
+            return thread.turns.stream().anyMatch(t->Objects.equals(t.id,note.id)&&Objects.equals(t.text,note.comment));
+        }
+        return false;
     }
     private static boolean validNote(ReviewComment note) {
         return note != null && note.id != null && !note.id.isBlank() && note.filePath != null && !note.filePath.isBlank()
@@ -80,7 +92,12 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
                 ReviewComment note = iterator.next();
                 if (ids.contains(note.id)||state.removedThreadIDs.contains(note.discussionID())) { iterator.remove(); continue; }
                 if (state.comments.size() >= 100 || budget + note.documentSnapshot.length() > 10000000) continue;
-                state.comments.add(new ReviewComment(note)); ids.add(note.id); iterator.remove();
+                var restored=new ReviewComment(note);
+                // Explicit recovery is a new outgoing turn, not a replay of an acknowledged ID.
+                if(state.threads.stream().anyMatch(t->t.id.equals(note.discussionID())&&t.turns.stream().anyMatch(turn->turn.id.equals(note.id)))) {
+                    restored.threadID=note.discussionID();restored.id=UUID.randomUUID().toString();
+                }
+                state.comments.add(restored); ids.add(restored.id); iterator.remove();
                 budget += note.documentSnapshot.length(); count++;
             }
         }
@@ -316,7 +333,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
     public void removeTransferred(List<ReviewComment> submitted) {
         Set<String> unchanged = new HashSet<>();
         for (ReviewComment current : snapshot()) for (ReviewComment old : submitted)
-            if (!openInputs.containsKey(current.id) && current.samePayload(old)) unchanged.add(current.id);
+            if (!openInputs.containsKey(current.id) && current.sameMessage(old)) unchanged.add(current.id);
         synchronized (this) {
             state.lastTransferred.clear();
             for (ReviewComment current : state.comments) if (unchanged.contains(current.id))

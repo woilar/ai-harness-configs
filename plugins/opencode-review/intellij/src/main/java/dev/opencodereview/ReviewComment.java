@@ -66,11 +66,16 @@ public final class ReviewComment {
     public String sideLabel() { return switch (side) { case "LEFT" -> "Старая версия"; case "RIGHT" -> "Новая версия"; default -> "Рабочий файл"; }; }
 
     public boolean samePayload(ReviewComment other) {
+        return sameMessage(other) && startLine == other.startLine && endLine == other.endLine && changed == other.changed;
+    }
+
+    /** Live anchors can move after submission without creating a new outgoing message. */
+    public boolean sameMessage(ReviewComment other) {
         return Objects.equals(id, other.id) && Objects.equals(filePath, other.filePath)
             && Objects.equals(threadID,other.threadID) && Objects.equals(boundSessionID,other.boundSessionID) && Objects.equals(boundDirectory,other.boundDirectory)
             && Objects.equals(side, other.side) && Objects.equals(revision, other.revision)
-            && Objects.equals(replyContext,other.replyContext) && Objects.equals(code, other.code) && Objects.equals(comment, other.comment)
-            && startLine == other.startLine && endLine == other.endLine && changed == other.changed;
+            && Objects.equals(revisionLabel,other.revisionLabel) && Objects.equals(documentSnapshot,other.documentSnapshot)
+            && Objects.equals(replyContext,other.replyContext) && Objects.equals(code, other.code) && Objects.equals(comment, other.comment);
     }
 
     String discussionID(){return threadID.isEmpty()?id:threadID;}
