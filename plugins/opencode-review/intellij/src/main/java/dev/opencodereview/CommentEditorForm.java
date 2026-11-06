@@ -66,14 +66,10 @@ final class CommentEditorForm extends JPanel {
             input.setOpaque(false); scroll.setOpaque(false); scroll.getViewport().setOpaque(false);
         }
         add(scroll, BorderLayout.CENTER);
-        save = new JButton(editing ? "Сохранить" : "↑");
+        save = editing ? new JButton("Сохранить") : new CompactActionButton(true);
         if (!editing) save.getAccessibleContext().setAccessibleName("В очередь");
         save.setToolTipText(SystemInfo.isMac ? "Добавить в очередь · ⌘Enter" : "Добавить в очередь · Ctrl+Enter");
-        if (!editing) {
-            save.setBackground(JBColor.namedColor("Button.default.startBackground", new JBColor(0x315FBD, 0x4676D8)));
-            save.setForeground(JBColor.namedColor("Button.default.foreground", JBColor.WHITE));
-        }
-        JButton cancelButton = new JButton(editing ? "Отмена" : "−");
+        JButton cancelButton = editing ? new JButton("Отмена") : new CompactActionButton(false);
         cancelButton.addActionListener(e -> collapse.run());
         actions.setOpaque(false); actions.add(cancelButton); actions.add(save);
         if (editing) {
@@ -101,7 +97,6 @@ final class CommentEditorForm extends JPanel {
             for (JButton button : new JButton[]{save, cancelButton}) {
                 button.setMargin(JBUI.emptyInsets());
                 button.setPreferredSize(JBUI.size(26, 24));
-                button.putClientProperty("JButton.buttonType", "square");
             }
             cancelButton.setBorderPainted(false); cancelButton.setContentAreaFilled(false);
             actions.removeAll(); actions.setLayout(new FlowLayout(FlowLayout.RIGHT, JBUI.scale(2), 0));
@@ -189,6 +184,47 @@ final class CommentEditorForm extends JPanel {
     }
     void focusInput() { SwingUtilities.invokeLater(() -> { com.intellij.openapi.wm.IdeFocusManager.getGlobalInstance().requestFocus(input, true); input.setCaretPosition(input.getText().length()); }); }
     JTextArea input() { return input; }
+    /** Tiny inlay controls cannot use the LAF text layout: native button insets
+     * can consume the entire 26px surface. Paint vector glyphs in the full bounds
+     * while retaining JButton's keyboard, accessibility and action handling. */
+    static final class CompactActionButton extends JButton {
+        private final boolean queue;
+        CompactActionButton(boolean queue) {
+            this.queue = queue;
+            setBorder(JBUI.Borders.empty()); setBorderPainted(false);
+            setContentAreaFilled(false); setOpaque(false); setRolloverEnabled(true);
+            setPreferredSize(JBUI.size(26, 24));
+        }
+        @Override protected void paintComponent(Graphics graphics) {
+            Graphics2D g = (Graphics2D) graphics.create();
+            try {
+                g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                int w = getWidth(), h = getHeight();
+                if (queue || getModel().isRollover() || getModel().isPressed()) {
+                    Color fill = queue
+                        ? JBColor.namedColor("Button.default.startBackground", new JBColor(0x315FBD, 0x4676D8))
+                        : JBColor.namedColor("ActionButton.hoverBackground", new JBColor(0xDFE1E5, 0x43454A));
+                    if (!isEnabled()) fill = JBColor.namedColor("Button.disabledBackground", new JBColor(0xDFE1E5, 0x393B40));
+                    else if (getModel().isPressed()) fill = fill.darker();
+                    else if (getModel().isRollover() && queue) fill = fill.brighter();
+                    g.setColor(fill); g.fillRoundRect(0, 0, w, h, JBUI.scale(6), JBUI.scale(6));
+                }
+                g.setColor(!isEnabled()
+                    ? JBColor.namedColor("Label.disabledForeground", new JBColor(0x8C8E94, 0x6F737A))
+                    : queue ? Color.WHITE : JBColor.namedColor("Label.foreground", new JBColor(0x303030, 0xDFE1E5)));
+                g.setStroke(new BasicStroke(JBUI.scale(1.6f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                int cx = w / 2, cy = h / 2, r = JBUI.scale(4);
+                if (queue) {
+                    g.drawLine(cx, cy + r, cx, cy - r);
+                    g.drawLine(cx - r, cy, cx, cy - r); g.drawLine(cx, cy - r, cx + r, cy);
+                } else g.drawLine(cx - r, cy, cx + r, cy);
+                if (hasFocus()) {
+                    g.setColor(JBColor.namedColor("Component.focusColor", new JBColor(0x315FBD, 0x548AF7)));
+                    g.drawRoundRect(1, 1, w - 3, h - 3, JBUI.scale(6), JBUI.scale(6));
+                }
+            } finally { g.dispose(); }
+        }
+    }
     private static final class CommentInput extends JTextArea implements KeyboardAwareFocusOwner {
         @Override public boolean skipKeyEventDispatcher(KeyEvent event) { return true; }
     }
