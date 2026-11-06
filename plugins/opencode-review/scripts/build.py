@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build against the locally installed IDEA 2026.3; no network or Gradle required."""
+"""Build against local IDEA 2026.2/2026.3 (IDEA_HOME); no network or Gradle required."""
 from pathlib import Path
 import os
 import shutil
