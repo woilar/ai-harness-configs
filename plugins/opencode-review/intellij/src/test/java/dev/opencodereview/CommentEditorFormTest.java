@@ -49,8 +49,13 @@ public final class CommentEditorFormTest {
             check(creation.equals(java.util.List.of("Черновик")), "collapsed form can resume and queue exactly once");
             var grow = new CommentEditorForm("Sample.java:4–6", "Short", false, text -> null, () -> {});
             grow.setEditorWidth(620, () -> {}); int shortHeight = grow.getPreferredSize().height;
+            check(grow.input().getRows() == 1 && shortHeight <= 48, "short draft is a compact single row");
             grow.input().setText("Line\n".repeat(8));
             check(grow.getPreferredSize().height > shortHeight, "creation field grows with multiline text");
+            check(grow.input().getRows() == 6, "multiline draft is capped at six visible rows");
+            int capped = grow.getPreferredSize().height;
+            grow.input().setText("Line\n".repeat(100));
+            check(grow.getPreferredSize().height == capped, "long draft scrolls instead of growing beyond cap");
             grow.input().setText("long word ".repeat(30)); grow.setEditorWidth(260, () -> {}); int narrowHeight = grow.getPreferredSize().height;
             grow.setEditorWidth(720, () -> {});
             check(grow.getPreferredSize().height < narrowHeight && grow.getPreferredSize().width == 720, "wrapped input and footer adapt to editor width");

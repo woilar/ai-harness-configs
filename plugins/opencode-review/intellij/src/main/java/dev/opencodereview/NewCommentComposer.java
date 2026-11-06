@@ -13,6 +13,7 @@ final class NewCommentComposer extends JPanel {
     private final CommentEditorForm form;
     private final JPanel summary = new JPanel(new BorderLayout(6, 0));
     private final JButton resume = new JButton();
+    private final JLabel lineCount = new JLabel();
     private boolean expanded, disposed;
     private int width;
     private Runnable sizeChanged = () -> {};
@@ -23,20 +24,30 @@ final class NewCommentComposer extends JPanel {
             text -> WriteIntentReadAction.compute(() -> service.queueCreationDraft(id, text)), () -> WriteIntentReadAction.run(this::collapse));
         form.onChanged(text -> service.saveCreationDraft(id, text));
         form.setVisible(false); add(form, BorderLayout.CENTER);
-        summary.setOpaque(false); summary.setBorder(JBUI.Borders.empty(4));
+        summary.setOpaque(false); summary.setBorder(JBUI.Borders.empty(2, 6));
+        resume.setBorderPainted(false); resume.setContentAreaFilled(false); resume.setMargin(JBUI.emptyInsets());
+        resume.setIcon(AllIcons.General.ArrowRight);
+        resume.setMinimumSize(JBUI.size(0, 24));
+        lineCount.setForeground(com.intellij.ui.JBColor.GRAY);
         resume.setHorizontalAlignment(SwingConstants.LEFT);
         resume.getAccessibleContext().setAccessibleName("Продолжить черновик комментария");
         resume.addActionListener(e -> WriteIntentReadAction.run(this::expand));
         JButton discard = new JButton(AllIcons.Actions.GC); discard.setToolTipText("Удалить черновик");
         discard.getAccessibleContext().setAccessibleName("Удалить черновик комментария");
         discard.addActionListener(e -> WriteIntentReadAction.run(() -> service.discardCreationDraft(id)));
-        summary.add(resume, BorderLayout.CENTER); summary.add(discard, BorderLayout.EAST); add(summary, BorderLayout.NORTH);
+        discard.setBorderPainted(false); discard.setContentAreaFilled(false); discard.setMargin(JBUI.emptyInsets());
+        discard.setPreferredSize(JBUI.size(24, 24));
+        JPanel trailing = new JPanel(new BorderLayout(6, 0)); trailing.setOpaque(false);
+        trailing.add(lineCount, BorderLayout.CENTER); trailing.add(discard, BorderLayout.EAST);
+        summary.add(resume, BorderLayout.CENTER); summary.add(trailing, BorderLayout.EAST); add(summary, BorderLayout.NORTH);
         update(note);
     }
     void update(ReviewComment note) {
         form.setLocation(note.shortLocation() + (note.changed ? " · Код изменён" : ""));
         String text = note.comment.strip().replaceAll("\\s+", " ");
-        if (text.length() > 70) text = text.substring(0, 70) + "…";
+        if (text.codePointCount(0, text.length()) > 100) text = text.substring(0, text.offsetByCodePoints(0, 100)) + "…";
+        int lines = note.comment.split("\\n", -1).length;
+        lineCount.setText(lines > 1 ? lines + " стр." : "");
         resume.setText("Черновик · " + (text.isEmpty() ? "Новый комментарий" : text));
         resume.setToolTipText(note.shortLocation() + " · Продолжить черновик");
     }
@@ -56,12 +67,12 @@ final class NewCommentComposer extends JPanel {
     void focusInput() { if (!disposed) { if (!expanded) expand(); else form.focusInput(); } }
     void setEditorWidth(int width, Runnable listener) { this.width = width; sizeChanged = listener; updateSize(); }
     private void updateSize() {
-        int actual = width > 0 ? width : JBUI.scale(400);
+        int actual = Math.min(width > 0 ? width : JBUI.scale(400), JBUI.scale(620));
         form.setEditorWidth(actual, () -> { if (expanded && !disposed) { sizeTo(actual); sizeChanged.run(); } });
         sizeTo(actual); sizeChanged.run();
     }
     private void sizeTo(int width) {
-        setPreferredSize(null); setPreferredSize(new Dimension(width, super.getPreferredSize().height)); revalidate(); repaint();
+        setPreferredSize(null); setPreferredSize(new Dimension(width, expanded ? super.getPreferredSize().height : JBUI.scale(28))); revalidate(); repaint();
     }
     void dispose() { disposed = true; if (expanded) service.endEditing(id); }
     CommentEditorForm form() { return form; }
