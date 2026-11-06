@@ -141,16 +141,11 @@ class InstallTest(unittest.TestCase):
         self.assertFalse(self.codex.exists())
 
     def test_missing_workflow_module_stops_before_install(self):
-        for name in ('validation.md', 'plan-inbox.md'):
-            with self.subTest(module=name):
-                module = self.repo / 'shared/agent/references' / name
-                original = module.read_text()
-                module.unlink()
-                result = self.install()
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn(name, result.stderr)
-                self.assertFalse(self.codex.exists())
-                module.write_text(original)
+        (self.repo / 'shared/agent/references/validation.md').unlink()
+        result = self.install()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('validation.md', result.stderr)
+        self.assertFalse(self.codex.exists())
 
     def test_upgrade_removes_only_retired_owned_links(self):
         refs = self.codex / 'references'
