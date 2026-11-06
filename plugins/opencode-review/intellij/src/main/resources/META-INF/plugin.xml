@@ -2,7 +2,7 @@
   <id>dev.opencodereview</id><name>OpenCode Review</name><version>3.0.0</version>
   <vendor>Local tools</vendor>
   <description>Inline review comments for OpenCode v2 terminal sessions. Review both sides of a diff and append a batch to the last active OpenCode terminal. Sending stays manual.</description>
-  <idea-version since-build="263" until-build="263.*"/>
+  <idea-version since-build="262" until-build="263.*"/>
   <depends>com.intellij.modules.platform</depends><depends>org.jetbrains.plugins.terminal</depends>
   <dependencies><module name="intellij.terminal.frontend"/></dependencies>
   <extensions defaultExtensionNs="com.intellij">
