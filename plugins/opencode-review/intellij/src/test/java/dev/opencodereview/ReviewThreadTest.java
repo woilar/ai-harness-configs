@@ -54,7 +54,14 @@ public final class ReviewThreadTest {
             javax.swing.SwingUtilities.invokeAndWait(()->{
                 try{
                     var card=new ThreadCard(s,s.threads().getFirst());var field=ThreadCard.class.getDeclaredField("reply");field.setAccessible(true);
-                    var input=(javax.swing.JTextArea)field.get(card);var document=(javax.swing.text.AbstractDocument)input.getDocument();
+                    var input=(javax.swing.JTextArea)field.get(card);
+                    check("queue-reply".equals(input.getInputMap().get(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER,0))),"Enter queues reply instead of inserting newline");
+                    Object newline=input.getInputMap().get(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER,java.awt.event.InputEvent.SHIFT_DOWN_MASK));
+                    check(javax.swing.text.DefaultEditorKit.insertBreakAction.equals(newline),"Shift+Enter inserts newline");
+                    input.setText("first");input.setCaretPosition(5);
+                    input.getActionMap().get(newline).actionPerformed(new java.awt.event.ActionEvent(input,0,""));
+                    check(input.getText().equals("first\n"),"Shift+Enter preserves text and adds line break");
+                    var document=(javax.swing.text.AbstractDocument)input.getDocument();
                     document.replace(0,document.getLength(),"valid draft",null);
                     document.replace(0,document.getLength(),"x".repeat(10001),null);
                     check(input.getText().equals("valid draft")&&s.threads().getFirst().replyDraft.equals("valid draft"),"oversized paste rejected atomically without truncating saved draft");

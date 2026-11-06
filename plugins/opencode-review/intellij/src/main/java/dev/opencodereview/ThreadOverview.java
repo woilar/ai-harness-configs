@@ -30,7 +30,7 @@ final class ThreadOverview extends JPanel {
     void update(List<ReviewThread> current,String selected){
         threads=current;selectedID=current.stream().anyMatch(t->Objects.equals(t.id,selected))?selected:null;
         // Drafts and answers do not belong in the navigation preview or require rebuilding its controls.
-        String next=new Gson().toJson(current.stream().map(t->new Object[]{t.id,t.root.filePath,t.root.side,t.root.revisionLabel,t.root.startLine,t.root.endLine,t.root.changed,t.root.comment,t.root.code.lines().limit(3).toList(),t.status()}).toList());
+        String next=new Gson().toJson(current.stream().map(t->new Object[]{t.id,t.root.filePath,t.root.side,t.root.revisionLabel,t.root.startLine,t.root.endLine,t.root.changed,t.root.comment,t.root.code.lines().limit(3).toList(),t.status(),t.hasUnreadAnswer()}).toList());
         if(!next.equals(rendered)){
             rendered=next;cards.removeAll();
             if(current.isEmpty()){JLabel empty=new JLabel("Нет активных обсуждений");empty.setBorder(JBUI.Borders.empty(12,4));cards.add(empty);}
@@ -51,8 +51,8 @@ final class ThreadOverview extends JPanel {
             code=thread.root.code.replace("\r\n","\n").replace('\r','\n').replace("\t","    ").split("\n",-1);
             setOpaque(false);setContentAreaFilled(false);setBorderPainted(false);setFocusPainted(false);setRolloverEnabled(true);
             setAlignmentX(Component.LEFT_ALIGNMENT);setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            setToolTipText(thread.root.filePath+":"+thread.root.startLine+" · "+question+" · "+thread.status()+(thread.root.changed?" · Код изменён; показан исходный снимок":""));
-            getAccessibleContext().setAccessibleName(thread.root.shortLocation()+" · "+question);
+            setToolTipText(thread.root.filePath+":"+thread.root.startLine+" · "+question+" · "+thread.status()+(thread.hasUnreadAnswer()?" · Новый ответ":"")+(thread.root.changed?" · Код изменён; показан исходный снимок":""));
+            getAccessibleContext().setAccessibleName(thread.root.shortLocation()+" · "+question+(thread.hasUnreadAnswer()?" · Новый ответ":""));
             addActionListener(e->open.accept(thread.id));
             addMouseListener(new MouseAdapter(){private void popup(MouseEvent e){if(e.isPopupTrigger())changes.accept(thread.id);}
                 @Override public void mousePressed(MouseEvent e){popup(e);}@Override public void mouseReleased(MouseEvent e){popup(e);}});
@@ -70,7 +70,8 @@ final class ThreadOverview extends JPanel {
                 g.setColor(selected||hasFocus()?new JBColor(0x3574CF,0x599DF6):JBColor.border());g.setStroke(new BasicStroke(selected?JBUI.scale(2):1));g.drawRoundRect(1,1,w-3,h-3,JBUI.scale(10),JBUI.scale(10));
                 g.setFont(CommentCardPainter.font());g.setColor(new JBColor(0x2862AD,0x8AB4F8));
                 String location=thread.root.shortLocation();String prefix=thread.root.sideLabel()+" · ";if("WORKTREE".equals(thread.root.side)&&location.startsWith(prefix))location=location.substring(prefix.length());
-                int baseline=pad+g.getFontMetrics().getAscent();g.drawString(elide(g.getFontMetrics(),location,w-pad*2),pad,baseline);
+                int baseline=pad+g.getFontMetrics().getAscent();g.drawString(elide(g.getFontMetrics(),location,w-pad*2-(thread.hasUnreadAnswer()?JBUI.scale(16):0)),pad,baseline);
+                if(thread.hasUnreadAnswer()){g.setColor(new JBColor(0x3574CF,0x548AF7));int dot=JBUI.scale(6);g.fillOval(w-pad-dot,pad+(g.getFontMetrics().getHeight()-dot)/2,dot,dot);}
                 g.setFont(CommentCardPainter.font().deriveFont(Font.BOLD));g.setColor(JBColor.foreground());baseline+=g.getFontMetrics().getHeight()+JBUI.scale(4);g.drawString(elide(g.getFontMetrics(),question,w-pad*2),pad,baseline);
                 int top=baseline+JBUI.scale(9),bottom=h-pad,cw=Math.max(1,w-pad*2);g.setColor(new JBColor(0xE9EDF3,0x202226));g.fillRoundRect(pad,top,cw,Math.max(1,bottom-top),JBUI.scale(5),JBUI.scale(5));
                 g.setFont(codeFont());FontMetrics fm=g.getFontMetrics();int count=Math.min(3,code.length),gutter=fm.stringWidth(String.valueOf(thread.root.startLine+count-1))+JBUI.scale(16),textX=pad+gutter+JBUI.scale(8);

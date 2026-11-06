@@ -5,7 +5,7 @@ import com.intellij.openapi.application.WriteIntentReadAction;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.wm.ToolWindowManager;
 
-/** The shortcut follows the same preview/confirmation path as the panel button. */
+/** The shortcut submits the queue through the same path as the panel button. */
 public final class PreviewTransferAction extends DumbAwareAction {
     @Override public ActionUpdateThread getActionUpdateThread(){return ActionUpdateThread.BGT;}
     @Override public void update(AnActionEvent event){event.getPresentation().setEnabledAndVisible(event.getProject()!=null);}

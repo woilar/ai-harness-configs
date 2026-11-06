@@ -40,6 +40,7 @@ final class ThreadCard extends JPanel {
         log.setBorder(null);log.setOpaque(false);log.getViewport().setOpaque(false);log.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);log.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
         log.getVerticalScrollBar().setUnitIncrement(JBUI.scale(20));add(log,BorderLayout.CENTER);
         history.onChanged(this::updateSize);
+        history.onAnswerRead(text->service.markAnswerRead(id,text));
         reply.setRows(1);reply.setColumns(1);reply.setLineWrap(true);reply.setWrapStyleWord(true);reply.setFont(CommentCardPainter.font());reply.getAccessibleContext().setAccessibleName("Ответ в тред OpenCode");
         ((javax.swing.text.AbstractDocument)reply.getDocument()).setDocumentFilter(new javax.swing.text.DocumentFilter(){
             @Override public void replace(FilterBypass fb,int offset,int length,String text,javax.swing.text.AttributeSet attrs)throws javax.swing.text.BadLocationException{
@@ -55,9 +56,13 @@ final class ThreadCard extends JPanel {
             public void insertUpdate(DocumentEvent e){save();}public void removeUpdate(DocumentEvent e){save();}public void changedUpdate(DocumentEvent e){save();}});
         JPanel bottom=new JPanel(new BorderLayout(0,4));bottom.setOpaque(false);
         composer.setOpaque(false);composer.add(new JScrollPane(reply),BorderLayout.CENTER);
-        queue.setToolTipText("Добавить только этот ответ в черновик ревью. Отправка — в текущую сессию последнего активного терминала.");
+        queue.setToolTipText("Enter — добавить ответ в очередь; Shift+Enter — новая строка. Отправка — в текущую сессию последнего активного терминала.");
         queue.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));queue.setMargin(JBUI.insets(4,8));
-        queue.addActionListener(e->WriteIntentReadAction.run(()->{String problem=queueVisibleReply();error.setText(problem==null?"Уточнение в очереди Review.":problem);error.setVisible(true);error.setToolTipText(error.getText());updateSize();}));
+        Runnable queueReply=()->WriteIntentReadAction.run(()->{String problem=queueVisibleReply();error.setText(problem==null?"Уточнение в очереди Review.":problem);error.setVisible(true);error.setToolTipText(error.getText());updateSize();});
+        queue.addActionListener(e->queueReply.run());
+        reply.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER,0),"queue-reply");
+        reply.getActionMap().put("queue-reply",new AbstractAction(){@Override public void actionPerformed(java.awt.event.ActionEvent e){queueReply.run();}});
+        reply.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER,java.awt.event.InputEvent.SHIFT_DOWN_MASK),javax.swing.text.DefaultEditorKit.insertBreakAction);
         composer.add(queue,BorderLayout.EAST);bottom.add(composer,BorderLayout.CENTER);
         error.setVisible(false);error.setFont(CommentCardPainter.font());bottom.add(error,BorderLayout.SOUTH);add(bottom,BorderLayout.SOUTH);
         update(thread);

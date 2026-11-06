@@ -44,7 +44,11 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
     @Override public synchronized QueueState getState() {
         QueueState copy = new QueueState(); copy.pending = state.pending;
         copy.removedThreadIDs.addAll(state.removedThreadIDs);
-        for (ReviewThread thread : state.threads) copy.threads.add(new ReviewThread(thread));
+        for (ReviewThread thread : state.threads) {
+            var saved=new ReviewThread(thread);
+            for(var turn:saved.turns){turn.answerUtf8=Base64.getEncoder().encodeToString(turn.answer.getBytes(java.nio.charset.StandardCharsets.UTF_8));turn.answer="";}
+            copy.threads.add(saved);
+        }
         for (ReviewComment note : state.lastTransferred) copy.lastTransferred.add(new ReviewComment(note));
         for (ReviewComment note : state.comments) copy.comments.add(new ReviewComment(note));
         for (ReviewComment note : state.creationDrafts) {
@@ -61,7 +65,13 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
         // Older releases retained resolved transcripts. Migrate them to ID-only deletion markers.
         if(loaded.threads!=null)for(var t:loaded.threads)if(t!=null&&t.resolved&&t.id!=null&&!state.removedThreadIDs.contains(t.id))state.removedThreadIDs.add(t.id);
         if(loaded.threads!=null)for(var thread:loaded.threads)if(thread!=null&&!state.removedThreadIDs.contains(thread.id)&&validNote(thread.root)&&thread.id!=null&&thread.sessionID!=null&&thread.directory!=null&&thread.turns!=null&&thread.turns.size()<=100&&state.threads.size()<100)
-            {var copy=new ReviewThread(thread);copy.running=false;copy.online=false;state.threads.add(copy);}
+            {var copy=new ReviewThread(thread);copy.running=false;copy.online=false;for(var turn:copy.turns){
+                if(turn.answerUtf8!=null&&!turn.answerUtf8.isEmpty()){
+                    try{String decoded=new String(Base64.getDecoder().decode(turn.answerUtf8),java.nio.charset.StandardCharsets.UTF_8);if(decoded.length()<=20000)turn.answer=decoded;}catch(IllegalArgumentException ignored){}
+                }
+                turn.answerUtf8="";
+                if(turn.readAnswerHash==null)turn.readAnswerHash=BridgeClient.hash(turn.answer);
+            }state.threads.add(copy);}
         if (loaded.lastTransferred != null) for (ReviewComment note : loaded.lastTransferred)
             if (validNote(note) && !state.removedThreadIDs.contains(note.discussionID()) && state.lastTransferred.size() < 100) state.lastTransferred.add(new ReviewComment(note));
         if (loaded.comments != null) for (ReviewComment note : loaded.comments) {
@@ -480,6 +490,15 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
         boolean modified=false;synchronized(this){for(var t:state.threads)if(!seen.contains(t.id+"/"+t.sessionID)&&(t.online||t.running)){t.online=false;t.running=false;modified=true;}}
         if(modified)changed();
     }
+    void markAnswerRead(String id,String displayedAnswer){
+        boolean modified=false;
+        synchronized(this){for(var t:state.threads)if(t.id.equals(id))for(var turn:t.turns)
+            if(!displayedAnswer.isEmpty()&&turn.answer.equals(displayedAnswer)){
+                String hash=BridgeClient.hash(displayedAnswer);
+                if(!hash.equals(turn.readAnswerHash)){turn.readAnswerHash=hash;modified=true;}
+            }}
+        if(modified)notifyListeners();
+    }
     void mergeThreads(List<com.google.gson.JsonObject> updates){
         boolean modified=false;
         synchronized(this){for(var update:updates){
@@ -494,7 +513,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
                 if(answer.length()>20000)continue;
                 boolean completed=u.has("completed")&&u.get("completed").getAsBoolean();if(completed&&!turn.completed){turn.completed=true;modified=true;}
                 if(admitted&&!turn.admitted){turn.admitted=true;modified=true;}
-                if(!answer.isEmpty()&&!answer.equals(turn.answer)){turn.answer=answer;turn.answerID=BridgeClient.string(u,"answerID");modified=true;}
+                if(!answer.isEmpty()&&!answer.equals(turn.answer)){if(turn.readAnswerHash==null)turn.readAnswerHash=BridgeClient.hash(turn.answer);turn.answer=answer;turn.answerID=BridgeClient.string(u,"answerID");modified=true;}
             }
         }}if(modified)changed();
     }

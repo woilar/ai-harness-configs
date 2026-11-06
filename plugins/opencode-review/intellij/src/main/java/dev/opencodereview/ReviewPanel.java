@@ -17,7 +17,7 @@ final class ReviewPanel extends JPanel implements Disposable {
     private final ReviewService service;
     private final TerminalTracker tracker;
     private final JLabel count=new JLabel(), recipient=new JLabel(), connection=new JLabel(), message=new JLabel(" ");
-    private final JButton send=new JButton("Добавить в OpenCode"), focus=new JButton(AllIcons.Actions.ArrowExpand), stopWait=new JButton("Снять ожидание");
+    private final JButton send=new JButton("Отправить в OpenCode"), focus=new JButton(AllIcons.Actions.ArrowExpand), stopWait=new JButton("Снять ожидание");
     private final JCheckBox selectAll=new JCheckBox("Все");
     private final JPanel cards=new JPanel();
     private final ThreadOverview overview;
@@ -72,9 +72,9 @@ final class ReviewPanel extends JPanel implements Disposable {
             tracker.resolving()?new com.intellij.ui.JBColor(0xA77212,0xD6AA53):new com.intellij.ui.JBColor(0x8D929A,0x858B94)));
         if(notes.stream().noneMatch(n->n.id.equals(selectedID)))selectedID=null;
         boolean pending=service.pending()!=null;stopWait.setVisible(pending&&!busy);
-        send.setText(pending?"Проверить отправку":"Добавить в OpenCode");
+        send.setText(pending?"Проверить отправку":"Отправить в OpenCode");
         send.setEnabled(!busy && (pending || selected>0&&!service.hasManualInput()));
-        send.setToolTipText(pending?"Проверить прежнюю отправку без повторной отправки":service.hasManualInput()?"Добавь новый комментарий в очередь или сверни черновик":"Проверить текст и отправить в текущую сессию терминала");
+        send.setToolTipText(pending?"Проверить прежнюю отправку без повторной отправки":service.hasManualInput()?"Добавь новый комментарий в очередь или сверни черновик":"Сразу отправить очередь и текст терминала в текущую сессию OpenCode");
         String next=new Gson().toJson(notes);
         if (!next.equals(rendered)) {
             rendered=next;cards.removeAll();
@@ -86,7 +86,7 @@ final class ReviewPanel extends JPanel implements Disposable {
             cards.revalidate();cards.repaint();
         }
         for(Component component:cards.getComponents())if(component instanceof Card card)card.include.setEnabled(!busy&&!pending);
-        var threads=service.threads();overview.update(threads,service.selectedThreadID());tabs.setTitleAt(1,"Обсуждения · "+threads.size());
+        var threads=service.threads();overview.update(threads,service.selectedThreadID());long unread=threads.stream().filter(ReviewThread::hasUnreadAnswer).count();tabs.setTitleAt(1,"Обсуждения"+(unread>0?" · "+unread:""));tabs.setToolTipTextAt(1,"Непрочитанные ответы: "+unread+" · Всего обсуждений: "+threads.size());
     }
     private void threadChangesMenu(String id){
         var action=new com.intellij.openapi.actionSystem.AnAction("Показать изменения","Сравнить исходный снимок с текущим файлом",null){
@@ -102,12 +102,17 @@ final class ReviewPanel extends JPanel implements Disposable {
             if (!service.saveInputsForTransfer()) {feedback("Заверши ввод комментария.");return;}
             ReviewBatch batch=new ReviewBatch(service.snapshot());if(batch.size()==0){feedback("Выбери комментарии галочками.");return;}
             String text=batch.text(); if(text.length()>100000) {feedback("Пачка больше 100 000 символов. Уменьши очередь.");return;}
-            var preview=new ReviewPreviewDialog(project,service,tracker,batch);if(!preview.showAndGet())return;
-            if(!batch.matches(service.snapshot())||service.pending()!=null){feedback("Пачка изменилась. Открой предпросмотр снова.");return;}
+            if(!tracker.ready()){feedback(tracker.reason());return;}
             var target=tracker.target();var state=tracker.status();
             if(target==null||state==null) {feedback("Активируй терминал OpenCode с мостом Review.");return;}
             if(!state.has("ready")||!state.get("ready").getAsBoolean()) {feedback(BridgeClient.string(state,"error"));return;}
-            pending=new PendingTransfer();pending.submit=true;pending.draftHash=preview.draftHash;pending.id=UUID.randomUUID().toString();pending.instance=target.instance();pending.registryFile=target.registryFile();
+            if(!state.has("send")||!state.get("send").getAsBoolean()||!state.has("threads")||!state.get("threads").getAsBoolean()){
+                feedback("Обнови мост и серверный плагин OpenCode, затем перезапусти OpenCode.");return;
+            }
+            String binding=service.validateThreadBatch(batch.comments(),BridgeClient.string(state,"sessionID"),BridgeClient.string(state,"directory"));
+            if(binding!=null){feedback(binding);return;}
+            if(!batch.matches(service.snapshot())||service.pending()!=null){feedback("Очередь изменилась. Повтори отправку.");return;}
+            pending=new PendingTransfer();pending.submit=true;pending.draftHash=BridgeClient.string(state,"draftHash");pending.id=UUID.randomUUID().toString();pending.instance=target.instance();pending.registryFile=target.registryFile();
             pending.sessionID=BridgeClient.string(state,"sessionID");pending.directory=BridgeClient.string(state,"directory");pending.title=BridgeClient.string(state,"title");pending.text=text;pending.hash=BridgeClient.hash(text);
             for(var note:batch.comments())pending.comments.add(note);service.setPending(pending);
         }
@@ -122,7 +127,7 @@ final class ReviewPanel extends JPanel implements Disposable {
                 accepted=BridgeClient.confirms(receipt,transfer);
                 if(!accepted) error="Отправка пока не подтверждена. Очередь сохранена; проверь статус без повторной отправки.";
             } catch (BridgeClient.Rejected rejected) {
-                error=rejected.getMessage();
+                error=rejected.getMessage().replace("Открой предпросмотр снова.","Повтори отправку.");
                 try {var receipt=BridgeClient.get(BridgeClient.read(transfer.registryFile),"/receipt/"+transfer.id);
                     accepted=BridgeClient.confirms(receipt,transfer);definiteFailure=receipt==null;
                 } catch(Exception ignored){}
