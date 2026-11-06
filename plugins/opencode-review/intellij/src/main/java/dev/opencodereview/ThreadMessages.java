@@ -17,6 +17,8 @@ final class ThreadMessages extends JPanel implements Scrollable {
     private final JButton older=new JButton();
     private final List<BubbleRow> rows=new ArrayList<>();
     private Runnable changed=()->{};
+    private java.util.function.Consumer<String> read=text->{};
+    void onAnswerRead(java.util.function.Consumer<String> listener){read=listener;}
     private int layoutWidth=JBUI.scale(400);
 
     ThreadMessages(){
@@ -37,7 +39,7 @@ final class ThreadMessages extends JPanel implements Scrollable {
     private void rebuild(){
         removeAll();rows.clear();int hidden=Math.max(0,messages.size()-2);
         if(hidden>0){older.setText(expanded?"▾ Скрыть предыдущие сообщения":"▸ Показать предыдущие · "+hidden);add(older);}
-        for(var message:messages.subList(expanded?0:hidden,messages.size())){var row=new BubbleRow(message);rows.add(row);add(row);}
+        for(var message:messages.subList(expanded?0:hidden,messages.size())){var row=new BubbleRow(message,read);rows.add(row);add(row);}
         revalidate();repaint();
     }
     int contentHeight(int width){layoutWidth=Math.max(JBUI.scale(80),width);return layoutRows(false);}
@@ -61,7 +63,16 @@ final class ThreadMessages extends JPanel implements Scrollable {
         private final JPanel bubble;
         private final int naturalWidth;
         private final JEditorPane text=new JEditorPane();
-        BubbleRow(Message message){
+        private boolean reported;
+        private final java.util.function.Consumer<String> read;
+        @Override protected void paintComponent(Graphics g){
+            super.paintComponent(g);
+            if(message.agent()&&!reported&&isShowing()&&!getVisibleRect().isEmpty()){
+                reported=true;SwingUtilities.invokeLater(()->read.accept(message.text()));
+            }
+        }
+        BubbleRow(Message message,java.util.function.Consumer<String> read){
+            this.read=read;
             this.message=message;setOpaque(false);setLayout(null);
             author=new JLabel(message.agent()?"OpenCode":"Вы");author.setFont(CommentCardPainter.font().deriveFont(Font.BOLD));
             author.setForeground(JBColor.namedColor("Label.foreground",JBColor.foreground()));add(author);
