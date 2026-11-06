@@ -19,6 +19,9 @@ final class ThreadCard extends JPanel {
     private int editorWidth;
     private Runnable sizeChanged=()->{};
     private final JTextArea reply=new ReplyInput();private final JButton queue=new JButton("В очередь");
+    private final JScrollPane replyScroll=new JScrollPane(reply);
+    private final JTextArea replyMeasurement=new JTextArea();
+    private final JPanel queueSlot=new JPanel(new BorderLayout());
     private boolean updating;
     private static final class ReplyInput extends JTextArea implements KeyboardAwareFocusOwner {
         @Override public boolean skipKeyEventDispatcher(KeyEvent event){return true;}
@@ -52,10 +55,14 @@ final class ThreadCard extends JPanel {
             }
         });
         reply.addFocusListener(new java.awt.event.FocusAdapter(){@Override public void focusGained(java.awt.event.FocusEvent event){service.selectThread(id);}});
-        reply.getDocument().addDocumentListener(new DocumentListener(){private void save(){if(!updating)service.saveThreadDraft(id,reply.getText());}
+        reply.getDocument().addDocumentListener(new DocumentListener(){private void save(){if(!updating)service.saveThreadDraft(id,reply.getText());updateSize();}
             public void insertUpdate(DocumentEvent e){save();}public void removeUpdate(DocumentEvent e){save();}public void changedUpdate(DocumentEvent e){save();}});
         JPanel bottom=new JPanel(new BorderLayout(0,4));bottom.setOpaque(false);
-        composer.setOpaque(false);composer.add(new JScrollPane(reply),BorderLayout.CENTER);
+        composer.setOpaque(false);
+        replyScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        replyScroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
+        composer.add(replyScroll,BorderLayout.CENTER);
+        queueSlot.setOpaque(false);queueSlot.add(queue,BorderLayout.SOUTH);
         queue.setToolTipText("Enter — добавить ответ в очередь; Shift+Enter — новая строка. Отправка — в текущую сессию последнего активного терминала.");
         queue.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));queue.setMargin(JBUI.insets(4,8));
         Runnable queueReply=()->WriteIntentReadAction.run(()->{String problem=queueVisibleReply();error.setText(problem==null?"Уточнение в очереди Review.":problem);error.setVisible(true);error.setToolTipText(error.getText());updateSize();});
@@ -63,7 +70,7 @@ final class ThreadCard extends JPanel {
         reply.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER,0),"queue-reply");
         reply.getActionMap().put("queue-reply",new AbstractAction(){@Override public void actionPerformed(java.awt.event.ActionEvent e){queueReply.run();}});
         reply.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER,java.awt.event.InputEvent.SHIFT_DOWN_MASK),javax.swing.text.DefaultEditorKit.insertBreakAction);
-        composer.add(queue,BorderLayout.EAST);bottom.add(composer,BorderLayout.CENTER);
+        composer.add(queueSlot,BorderLayout.EAST);bottom.add(composer,BorderLayout.CENTER);
         error.setVisible(false);error.setFont(CommentCardPainter.font());bottom.add(error,BorderLayout.SOUTH);add(bottom,BorderLayout.SOUTH);
         update(thread);
     }
@@ -77,7 +84,7 @@ final class ThreadCard extends JPanel {
     void setEditorWidth(int width,Runnable listener){editorWidth=width;sizeChanged=listener;updateSize();}
     private void updateSize(){
         int width=editorWidth>0?editorWidth:getWidth()>0?getWidth():JBUI.scale(400);
-        layoutComposer(width);
+        layoutComposer(width);sizeReply(width);
         int contentWidth=Math.max(1,width-JBUI.scale(18));
         int height=Math.min(JBUI.scale(260),history.contentHeight(contentWidth-JBUI.scale(16)));
         log.setPreferredSize(new Dimension(contentWidth,Math.max(JBUI.scale(48),height)));
@@ -87,14 +94,30 @@ final class ThreadCard extends JPanel {
     private void layoutComposer(int width){
         boolean narrow=width<JBUI.scale(310);
         String position=narrow?BorderLayout.SOUTH:BorderLayout.EAST;
-        if(!position.equals(((BorderLayout)composer.getLayout()).getConstraints(queue))){composer.remove(queue);composer.add(queue,position);}
+        if(!position.equals(((BorderLayout)composer.getLayout()).getConstraints(queueSlot))){composer.remove(queueSlot);composer.add(queueSlot,position);}
+    }
+    private void sizeReply(int width){
+        int available=Math.max(1,width-getInsets().left-getInsets().right);
+        if(((BorderLayout)composer.getLayout()).getConstraints(queueSlot).equals(BorderLayout.EAST))
+            available-=queueSlot.getPreferredSize().width+JBUI.scale(6);
+        Insets border=replyScroll.getInsets();
+        int textWidth=Math.max(1,available-border.left-border.right);
+        // A separate text view measures the new document immediately, before Swing's
+        // input view has processed the document notification. This includes soft wraps.
+        replyMeasurement.setFont(reply.getFont());replyMeasurement.setMargin(reply.getMargin());
+        replyMeasurement.setLineWrap(true);replyMeasurement.setWrapStyleWord(true);
+        replyMeasurement.setTabSize(reply.getTabSize());replyMeasurement.setText(reply.getText());
+        replyMeasurement.setSize(textWidth,Integer.MAX_VALUE);
+        int height=replyMeasurement.getPreferredSize().height+border.top+border.bottom;
+        Dimension desired=new Dimension(Math.max(1,available),height);
+        if(!desired.equals(replyScroll.getPreferredSize())){replyScroll.setPreferredSize(desired);revalidate();}
     }
     @Override public void doLayout(){
         if(editorWidth==0&&getWidth()>0)updateViewportWidth();
         super.doLayout();
     }
     private void updateViewportWidth(){
-        layoutComposer(getWidth());
+        layoutComposer(getWidth());sizeReply(getWidth());
         int h=Math.min(JBUI.scale(260),history.contentHeight(Math.max(1,getWidth()-JBUI.scale(34))));
         Dimension desired=new Dimension(Math.max(1,getWidth()-JBUI.scale(18)),Math.max(JBUI.scale(48),h));
         if(!desired.equals(log.getPreferredSize())){log.setPreferredSize(desired);revalidate();}

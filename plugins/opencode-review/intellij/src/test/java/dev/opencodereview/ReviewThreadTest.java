@@ -61,6 +61,16 @@ public final class ReviewThreadTest {
                     input.setText("first");input.setCaretPosition(5);
                     input.getActionMap().get(newline).actionPerformed(new java.awt.event.ActionEvent(input,0,""));
                     check(input.getText().equals("first\n"),"Shift+Enter preserves text and adds line break");
+                    card.setEditorWidth(620,()->{});input.setText("Короткий ответ");int shortReplyHeight=card.getPreferredSize().height;
+                    input.setText("Длинный ответ ".repeat(25));
+                    check(card.getPreferredSize().height>shortReplyHeight,"reply grows immediately for soft-wrapped words");
+                    int wideReplyHeight=card.getPreferredSize().height;
+                    card.setEditorWidth(220,()->{});
+                    check(card.getPreferredSize().height>wideReplyHeight,"reply remeasures when editor narrows");
+                    card.setEditorWidth(620,()->{});input.setText("Строка\n".repeat(12));
+                    check(card.getPreferredSize().height>shortReplyHeight+input.getFontMetrics(input.getFont()).getHeight()*10,"all explicit lines are visible without an inner scrollbar");
+                    input.setText("Короткий ответ");
+                    check(card.getPreferredSize().height==shortReplyHeight,"reply shrinks after text removal");
                     var document=(javax.swing.text.AbstractDocument)input.getDocument();
                     document.replace(0,document.getLength(),"valid draft",null);
                     document.replace(0,document.getLength(),"x".repeat(10001),null);
