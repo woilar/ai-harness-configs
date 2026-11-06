@@ -63,7 +63,7 @@ class InstallTest(unittest.TestCase):
         shutil.copytree(ROOT / 'opencode', isolated / 'opencode')
         script = isolated / 'opencode/scripts/install.sh'
         self.assertEqual(subprocess.run(['bash', str(script)], env=self.env, capture_output=True).returncode, 0)
-        for name in ('planning.md', 'task-state.md', 'inbox.md', 'handoff.md'):
+        for name in ('planning.md', 'plan-inbox.md', 'task-state.md', 'inbox.md', 'handoff.md'):
             with self.subTest(module=name):
                 module = isolated / 'shared/agent/references' / name
                 original = module.read_text()
