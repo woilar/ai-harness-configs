@@ -23,6 +23,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
     public static final class QueueState {
         public ArrayList<ReviewComment> comments = new ArrayList<>();
         public ArrayList<ReviewComment> creationDrafts = new ArrayList<>();
+        public ArrayList<ReviewComment> trash = new ArrayList<>();
         public PendingTransfer pending;
         public ArrayList<ReviewThread> threads=new ArrayList<>();
         public ArrayList<String> removedThreadIDs=new ArrayList<>();
@@ -35,6 +36,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
     private final List<Runnable> listeners = new ArrayList<>();
     private final Map<String, Runnable> openInputs = new HashMap<>();
     private final Map<String, BooleanSupplier> autosaves = new HashMap<>();
+    private String lastDeletedID;
     private boolean started;
     private TerminalTracker tracker;
     TerminalTracker tracker() { if (tracker == null) { tracker = new TerminalTracker(project, this::notifyListeners); Disposer.register(this, tracker); } return tracker; }
@@ -56,10 +58,15 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
             draft.creationTextUtf8 = Base64.getEncoder().encodeToString(note.comment.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             draft.comment = ""; copy.creationDrafts.add(draft);
         }
+        for (var note : state.trash) {
+            var saved = new ReviewComment(note);
+            saved.creationTextUtf8 = Base64.getEncoder().encodeToString(note.comment.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            saved.comment = ""; copy.trash.add(saved);
+        }
         return copy;
     }
     @Override public synchronized void loadState(QueueState loaded) {
-        state = new QueueState();selectedThreadID=null;
+        state = new QueueState();selectedThreadID=null;lastDeletedID=null;
         state.pending = loaded.pending;
         if(loaded.removedThreadIDs!=null)for(String id:loaded.removedThreadIDs)if(id!=null&&!id.isBlank()&&!state.removedThreadIDs.contains(id))state.removedThreadIDs.add(id);
         // Older releases retained resolved transcripts. Migrate them to ID-only deletion markers.
@@ -92,7 +99,20 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
                 || draftBudget + note.documentSnapshot.length() > 10000000
                 || state.comments.stream().anyMatch(n -> n.id.equals(note.id))
                 || state.creationDrafts.stream().anyMatch(n -> n.id.equals(note.id))) continue;
-            state.creationDrafts.add(new ReviewComment(note)); draftBudget += note.documentSnapshot.length();
+            if (!note.comment.isBlank()) { state.comments.add(new ReviewComment(note)); draftBudget += note.documentSnapshot.length(); }
+        }
+        if (loaded.trash != null) for (var stored : loaded.trash) {
+            if (stored == null || state.trash.size() == 3) continue;
+            var note = new ReviewComment(stored);
+            if (note.creationTextUtf8 != null && !note.creationTextUtf8.isEmpty()) {
+                try { note.comment = new String(Base64.getDecoder().decode(note.creationTextUtf8), java.nio.charset.StandardCharsets.UTF_8); }
+                catch (IllegalArgumentException invalid) { continue; }
+            }
+            note.creationTextUtf8 = "";
+            if (!validNote(note) || note.comment.length()>10000 || note.code.length()>20000 || note.documentSnapshot.length()>1000000
+                || state.removedThreadIDs.contains(note.discussionID()) || acknowledgedMessage(note)
+                || state.comments.stream().anyMatch(n->n.id.equals(note.id)) || state.trash.stream().anyMatch(n->n.id.equals(note.id))) continue;
+            state.trash.add(note);
         }
     }
     private boolean acknowledgedMessage(ReviewComment note) {
@@ -272,7 +292,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
             if (note.documentSnapshot.length() > 1000000) return "Снимок файла превышает 1 МБ. Выбери меньший файл для обсуждения.";
             if (note.code.length() > 20000) return "Выдели меньший фрагмент: максимум 20 000 символов кода.";
             if (java.util.stream.Stream.concat(state.comments.stream(), state.creationDrafts.stream()).mapToLong(n -> n.documentSnapshot.length()).sum() + note.documentSnapshot.length() > 10000000)
-                return "Черновики и очередь снимков превысили 10 МБ.";
+                return "Комментарии и снимки кода превысили 10 МБ.";
             if (state.creationDrafts.stream().anyMatch(n -> n.id.equals(note.id)) || state.comments.stream().anyMatch(n -> n.id.equals(note.id)))
                 return "Комментарий уже существует.";
             state.creationDrafts.add(new ReviewComment(note));
@@ -289,7 +309,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
         synchronized (this) {
             var draft = state.creationDrafts.stream().filter(n -> n.id.equals(id)).findFirst().orElse(null);
             if (draft == null) return "Черновик уже добавлен или удалён.";
-            if (state.comments.size() >= 100) return "В очереди уже 100 комментариев.";
+            if (state.comments.size() >= 100) return "В списке уже 100 комментариев.";
             draft.comment = text.strip(); state.creationDrafts.remove(draft); state.comments.add(draft);
         }
         changed(); return null;
@@ -360,6 +380,20 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
         for (BooleanSupplier save : List.copyOf(autosaves.values())) if (!save.getAsBoolean()) return false;
         return !hasOpenInput();
     }
+    /** A fresh delivery gets fresh turn identities; uncertain retries keep the persisted PendingTransfer. */
+    void beginDelivery() {
+        synchronized (this) {
+            if (state.pending != null) throw new IllegalStateException("Отправка уже ожидает подтверждения.");
+            for (var note : state.comments) if (note.included) {
+                String previous = note.id;
+                note.threadID = note.discussionID();
+                note.id = UUID.randomUUID().toString();
+                RangeMarker marker = anchors.remove(previous);
+                if (marker != null) anchors.put(note.id, marker);
+            }
+        }
+        changed();
+    }
     String updateComment(String id, String text) {
         String invalid = CommentEditorForm.validation(text);
         if (invalid != null) return invalid;
@@ -370,14 +404,77 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
         if (!found) return "Комментарий уже удалён.";
         changed(); return null;
     }
-    public void remove(Set<String> ids) {
+    synchronized List<ReviewComment> trash() { return state.trash.stream().map(ReviewComment::new).toList(); }
+    synchronized String lastDeletedID() { return lastDeletedID; }
+    /** Delete exactly the selection the user confirmed; a modal dialog can admit updates. */
+    synchronized String deleteSelected(Set<String> confirmedIDs) {
+        if(state.pending!=null)return "Сначала дождись результата текущей отправки.";
+        var current=state.comments.stream().filter(n->n.included).map(n->n.id).collect(java.util.stream.Collectors.toSet());
+        if(!current.equals(confirmedIDs))return "Выбор изменился. Повтори удаление и проверь количество комментариев.";
+        remove(confirmedIDs,true);
+        return null;
+    }
+    public void remove(Set<String> ids) { remove(ids, true); }
+    private void remove(Set<String> ids, boolean retain) {
         synchronized (this) {
-            state.comments.removeIf(note -> ids.contains(note.id));
-            for (String id : ids) {
+            var removed = new HashSet<String>();
+            var iterator = state.comments.iterator();
+            while (iterator.hasNext()) {
+                var note = iterator.next();
+                if (!ids.contains(note.id)) continue;
+                // An in-flight payload must remain available until its receipt is resolved.
+                if (retain && state.pending != null && state.pending.comments.stream().anyMatch(n->n.id.equals(note.id))) continue;
+                if (retain) {
+                    state.trash.removeIf(n->n.id.equals(note.id));
+                    state.trash.addFirst(new ReviewComment(note));
+                    while (state.trash.size()>3) state.trash.removeLast();
+                    lastDeletedID = note.id;
+                }
+                removed.add(note.id); iterator.remove();
+            }
+            for (String id : removed) {
                 RangeMarker marker = anchors.remove(id); if (marker != null) marker.dispose();
             }
         }
         changed();
+    }
+    String restoreDeleted(String id) {
+        synchronized (this) {
+            var note = state.trash.stream().filter(n->n.id.equals(id)).findFirst().orElse(null);
+            if (note == null) return "Комментарий уже восстановлен или вытеснен из корзины.";
+            if (state.pending != null) return "Сначала дождись результата текущей отправки.";
+            if (state.comments.size()+state.creationDrafts.size()>=100) return "В списке уже 100 комментариев.";
+            long budget = java.util.stream.Stream.concat(state.comments.stream(),state.creationDrafts.stream()).mapToLong(n->n.documentSnapshot.length()).sum();
+            if (budget+note.documentSnapshot.length()>10000000) return "Снимки комментариев превысили 10 МБ.";
+            if (state.comments.stream().anyMatch(n->n.id.equals(id))) return "Комментарий уже существует в списке.";
+            var restored = new ReviewComment(note);
+            // Preserve the unsent turn identity and session/worktree binding. Never submit here.
+            if ("WORKTREE".equals(restored.side)) {
+                restored.changed = true; // unavailable file requires review, too
+                if (ApplicationManager.getApplication()!=null) {
+                    var file=LocalFileSystem.getInstance().refreshAndFindFileByPath(restored.filePath);
+                    var doc=file==null?null:FileDocumentManager.getInstance().getDocument(file);
+                    if(doc!=null)checkRestoredCode(restored,doc.getText());
+                }
+            }
+            state.comments.add(restored);state.trash.remove(note);
+            if (Objects.equals(lastDeletedID,id))lastDeletedID=null;
+        }
+        for (var entry : List.copyOf(locations.entrySet())) if (!entry.getKey().isDisposed())
+            restoreAnchors(entry.getKey().getDocument(),entry.getValue());
+        changed();return null;
+    }
+    static void checkRestoredCode(ReviewComment note,String source) {
+        int start=note.startOffset,end=note.endOffset;
+        if(start<0||end<start||end>source.length()||!source.substring(start,end).equals(note.code)) {
+            int match=note.code.isEmpty()?-1:source.indexOf(note.code);
+            if(match<0||source.indexOf(note.code,match+1)>=0){note.changed=true;return;}
+            start=match;end=match+note.code.length();
+        }
+        note.startOffset=start;note.endOffset=end;
+        note.startLine=1+(int)source.substring(0,start).chars().filter(c->c=='\n').count();
+        note.endLine=1+(int)source.substring(0,Math.max(start,end-1)).chars().filter(c->c=='\n').count();
+        note.changed=false;
     }
     public void removeTransferred(List<ReviewComment> submitted) {
         Set<String> unchanged = new HashSet<>();
@@ -388,7 +485,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
             for (ReviewComment current : state.comments) if (unchanged.contains(current.id))
                 state.lastTransferred.add(new ReviewComment(current));
         }
-        remove(unchanged);
+        remove(unchanged, false);
     }
     public void navigate(ReviewComment note) {
         for (var entry : locations.entrySet()) if (entry.getValue().matches(note) && !entry.getKey().isDisposed()
@@ -439,9 +536,17 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
         changed();return note;
     }
     void toggleThread(String id){synchronized(this){for(var t:state.threads)if(t.id.equals(id)){t.expanded=!t.expanded;selectedThreadID=id;}}changed();}
+    void confirmDeleteThread(String id){
+        if(pending()!=null){error("Дождись подтверждения отправки перед удалением обсуждения.");return;}
+        if(thread(id)==null)return;
+        int answer=Messages.showDialog(project,
+            "Будут удалены переписка и неотправленные ответы этого обсуждения.\nСообщения в OpenCode останутся.\n\nВосстановление обсуждения пока недоступно.",
+            "Удалить обсуждение?",new String[]{"Удалить обсуждение","Отмена"},1,Messages.getWarningIcon());
+        if(answer==0)com.intellij.openapi.application.WriteIntentReadAction.run(()->resolveThread(id));
+    }
     void resolveThread(String id){
         synchronized(this){
-            if(state.threads.stream().noneMatch(t->t.id.equals(id)))return;
+            if(state.pending!=null||state.threads.stream().noneMatch(t->t.id.equals(id)))return;
             if(!state.removedThreadIDs.contains(id))state.removedThreadIDs.add(id);
             Set<String> removed=new HashSet<>();removed.add(id);
             for(var note:state.comments)if(note.discussionID().equals(id))removed.add(note.id);
@@ -449,6 +554,8 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
             if(Objects.equals(selectedThreadID,id))selectedThreadID=null;
             state.comments.removeIf(n->n.discussionID().equals(id));
             state.lastTransferred.removeIf(n->n.discussionID().equals(id));
+            state.trash.removeIf(n->n.discussionID().equals(id));
+            if(state.trash.stream().noneMatch(n->Objects.equals(n.id,lastDeletedID)))lastDeletedID=null;
             for(String noteID:removed){var marker=anchors.remove(noteID);if(marker!=null)marker.dispose();}
         }changed();
     }
@@ -458,9 +565,9 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
             var t=state.threads.stream().filter(x->x.id.equals(id)).findFirst().orElse(null);if(t==null)return "Обсуждение не найдено.";
             String error=CommentEditorForm.validation(t.replyDraft);if(error!=null)return error;
             if(state.comments.size()+state.creationDrafts.size()>=100)return "Уже 100 комментариев и черновиков.";
-            if(state.comments.stream().anyMatch(n->n.threadID.equals(id)))return "Уточнение уже в очереди. Измени его в панели Review.";
+            if(state.comments.stream().anyMatch(n->n.threadID.equals(id)))return "Ответ уже добавлен в комментарии. Измени его в панели Review.";
             if (java.util.stream.Stream.concat(state.comments.stream(), state.creationDrafts.stream()).mapToLong(n -> n.documentSnapshot.length()).sum() + t.root.documentSnapshot.length() > 10000000)
-                return "Черновики и очередь снимков превысили 10 МБ.";
+                return "Комментарии и снимки кода превысили 10 МБ.";
             var n=new ReviewComment(t.root);n.id=UUID.randomUUID().toString();n.threadID=t.id;n.boundSessionID="";n.boundDirectory="";
             n.replyContext="";if(!t.turns.isEmpty()){var last=t.turns.getLast();n.replyContext="Вы: "+last.text+"\nOpenCode: "+last.answer;if(n.replyContext.length()>12000)n.replyContext=n.replyContext.substring(0,12000)+"…";}
             n.comment=t.replyDraft.strip();n.included=true;state.comments.add(n);t.replyDraft="";t.resolved=false;

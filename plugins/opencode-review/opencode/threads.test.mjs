@@ -27,3 +27,14 @@ test('legacy stored turns retain original ownership when new session continues t
  await f.store.prepare({sessionID:other,turns:[{...f.turn,id:randomUUID()}]});await f.store.reply({threadID:f.turn.threadID,turnID:f.turn.id,text:'Legacy reply'},sessionID,'legacy');
  assert.equal((await f.read()).threads[0].turns[0].answer,'Legacy reply');
 });
+
+test('fresh delivery identity recovers prepared turn conflict without rebinding history',async()=>{
+ const f=fixture();await f.store.prepare({sessionID,turns:[f.turn]});
+ await assert.rejects(f.store.prepare({sessionID:other,turns:[{...f.turn,text:'edited'}]}));
+ const fresh={...f.turn,id:randomUUID(),text:'edited'};
+ await f.store.prepare({sessionID:other,turns:[fresh]});await f.store.admit(other,marker(fresh));
+ await f.store.reply({threadID:fresh.threadID,turnID:fresh.id,text:'delivered'},other,'fresh');
+ const result=await f.store.read({threads:[{id:fresh.threadID,sessionID:other}]});
+ assert.equal(result.threads[0].turns[0].answer,'delivered');
+ assert.equal((await f.read()).threads[0].turns[0].admitted,false);
+});

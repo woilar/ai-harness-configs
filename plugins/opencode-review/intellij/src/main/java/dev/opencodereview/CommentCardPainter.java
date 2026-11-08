@@ -19,14 +19,17 @@ final class CommentCardPainter {
         return px(37) + metrics.getHeight() * lines(metrics, text, width - px(24)).size();
     }
     static void paint(Graphics graphics, Rectangle card, ReviewComment note, String title, boolean paintClose) {
+        paint(graphics,card,note,title,paintClose,0);
+    }
+    static void paint(Graphics graphics, Rectangle card, ReviewComment note, String title, boolean paintClose, float hover) {
         Graphics2D g = (Graphics2D) graphics.create();
         try {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            g.setColor(JBColor.namedColor("OpenCodeReview.commentBackground", new JBColor(0xF5F7FB, 0x292C32)));
-            g.fillRoundRect(card.x, card.y, card.width - 1, card.height - 1, px(10), px(10));
-            g.setColor(JBColor.namedColor("OpenCodeReview.commentBorder", new JBColor(0xD8DFEB, 0x454B58)));
-            g.drawRoundRect(card.x, card.y, card.width - 1, card.height - 1, px(10), px(10));
+            g.setColor(ReviewUi.surface());
+            g.fillRoundRect(card.x, card.y, card.width - 1, card.height - 1, ReviewUi.arc(), ReviewUi.arc());
+            g.setColor(ReviewUi.border());
+            g.drawRoundRect(card.x, card.y, card.width - 1, card.height - 1, ReviewUi.arc(), ReviewUi.arc());
             g.setFont(headerFont());
             g.setColor(note.changed ? JBColor.namedColor("Label.warningForeground", new JBColor(0x916700, 0xD4AE62))
                 : JBColor.namedColor("Label.infoForeground", new JBColor(0x677181, 0xA5AEBD)));
@@ -51,7 +54,13 @@ final class CommentCardPainter {
                 Rectangle close = closeBounds(card);
                 g.setColor(JBColor.namedColor("OpenCodeReview.closeBackground", new JBColor(0xE8EDF5, 0x363B45)));
                 g.fillRoundRect(close.x, close.y, close.width, close.height, px(6), px(6));
-                g.setColor(JBColor.namedColor("Label.foreground", JBColor.foreground()));
+                if (hover > 0) {
+                    g.setComposite(AlphaComposite.SrcOver.derive(Math.min(1,hover)));
+                    g.setColor(JBColor.namedColor("ActionButton.hoverBackground",new JBColor(0xD8DCE5,0x50545C)));
+                    g.fillRoundRect(close.x,close.y,close.width,close.height,px(6),px(6));
+                    g.setComposite(AlphaComposite.SrcOver);
+                }
+                g.setColor(hover>0.5f?JBColor.namedColor("Label.errorForeground",new JBColor(0xC75450,0xE08080)):JBColor.foreground());
                 int cx = close.x + close.width / 2, cy = close.y + close.height / 2, radius = px(3);
                 g.setStroke(new BasicStroke(px(1)));
                 g.drawLine(cx - radius, cy - radius, cx + radius, cy + radius);

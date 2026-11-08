@@ -55,6 +55,7 @@ public final class ReviewThreadTest {
                 try{
                     var card=new ThreadCard(s,s.threads().getFirst());var field=ThreadCard.class.getDeclaredField("reply");field.setAccessible(true);
                     var input=(javax.swing.JTextArea)field.get(card);
+                    check(input.getInsets().left>=com.intellij.util.ui.JBUI.scale(10)&&input.getInsets().top>=com.intellij.util.ui.JBUI.scale(8),"reply caret has comfortable inner padding");
                     check("queue-reply".equals(input.getInputMap().get(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER,0))),"Enter queues reply instead of inserting newline");
                     Object newline=input.getInputMap().get(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER,java.awt.event.InputEvent.SHIFT_DOWN_MASK));
                     check(javax.swing.text.DefaultEditorKit.insertBreakAction.equals(newline),"Shift+Enter inserts newline");
@@ -83,6 +84,9 @@ public final class ReviewThreadTest {
                 }catch(Exception failure){throw new RuntimeException(failure);}
             });
         }catch(Exception failure){throw new AssertionError(failure);}
+        s.setPending(transfer);s.resolveThread(note.id);
+        check(s.thread(note.id)!=null&&!s.snapshot().isEmpty(),"pending delivery protects discussion and unsent reply");
+        s.setPending(null);
         var beforeDelete=s.getState();
         s.resolveThread(note.id);check(s.threads().isEmpty()&&s.displayComments().isEmpty(),"resolve removes transcript from panel and editor");
         check(s.snapshot().isEmpty(),"resolve removes queued follow-up");

@@ -17,7 +17,7 @@
       <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta alt shift R"/>
       <add-to-group group-id="EditorPopupMenu" anchor="first"/>
     </action>
-    <action id="dev.opencodereview.previewTransfer" class="dev.opencodereview.PreviewTransferAction" text="OpenCode: Отправить очередь" description="Сразу отправить выбранную пачку в текущую сессию OpenCode">
+    <action id="dev.opencodereview.previewTransfer" class="dev.opencodereview.PreviewTransferAction" text="OpenCode: Отправить комментарии" description="Сразу отправить выбранную пачку в текущую сессию OpenCode">
       <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift Y"/>
       <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta alt shift Y"/>
       <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta alt shift Y"/>
