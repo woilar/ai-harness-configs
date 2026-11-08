@@ -3,8 +3,6 @@ package dev.opencodereview;
 import com.intellij.ui.JBColor;
 import com.intellij.util.ui.JBUI;
 import javax.swing.*;
-import javax.swing.text.*;
-import javax.swing.text.html.*;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,6 +12,7 @@ final class ThreadMessages extends JPanel implements Scrollable {
     record Message(boolean agent, String text) {}
     private List<Message> messages=List.of();
     private boolean expanded;
+    private String sourcePath="";
     private final JButton older=new JButton();
     private final List<BubbleRow> rows=new ArrayList<>();
     private Runnable changed=()->{};
@@ -33,13 +32,15 @@ final class ThreadMessages extends JPanel implements Scrollable {
     void update(ReviewThread thread){
         List<Message> next=new ArrayList<>();
         for(var turn:thread.turns){next.add(new Message(false,turn.text));if(!turn.answer.isEmpty())next.add(new Message(true,turn.answer));}
-        if(messages.equals(next))return;
+        String path=thread.root==null?"":thread.root.filePath;
+        if(messages.equals(next)&&java.util.Objects.equals(sourcePath,path))return;
+        sourcePath=path;
         messages=List.copyOf(next);rebuild();changed.run();
     }
     private void rebuild(){
         removeAll();rows.clear();int hidden=Math.max(0,messages.size()-2);
         if(hidden>0){older.setText(expanded?"▾ Скрыть предыдущие сообщения":"▸ Показать предыдущие · "+hidden);add(older);}
-        for(var message:messages.subList(expanded?0:hidden,messages.size())){var row=new BubbleRow(message,read);rows.add(row);add(row);}
+        for(var message:messages.subList(expanded?0:hidden,messages.size())){var row=new BubbleRow(message,sourcePath,read,()->{revalidate();changed.run();});rows.add(row);add(row);}
         revalidate();repaint();
     }
     int contentHeight(int width){layoutWidth=Math.max(JBUI.scale(80),width);return layoutRows(false);}
@@ -62,7 +63,7 @@ final class ThreadMessages extends JPanel implements Scrollable {
         private final JLabel author;
         private final JPanel bubble;
         private final int naturalWidth;
-        private final JEditorPane text=new JEditorPane();
+        private final MessageRenderer text;
         private boolean reported;
         private final java.util.function.Consumer<String> read;
         @Override protected void paintComponent(Graphics g){
@@ -71,29 +72,19 @@ final class ThreadMessages extends JPanel implements Scrollable {
                 reported=true;SwingUtilities.invokeLater(()->read.accept(message.text()));
             }
         }
-        BubbleRow(Message message,java.util.function.Consumer<String> read){
+        BubbleRow(Message message,String sourcePath,java.util.function.Consumer<String> read,Runnable changed){
             this.read=read;
             this.message=message;setOpaque(false);setLayout(null);
             author=new JLabel(message.agent()?"OpenCode":"Вы");author.setFont(CommentCardPainter.font().deriveFont(Font.BOLD));
             author.setForeground(JBColor.namedColor("Label.foreground",JBColor.foreground()));add(author);
-            Color fill=message.agent()?new JBColor(0xEDF0F4,0x34373D):new JBColor(0xE1EBFC,0x384B65);
+            Color fill=message.agent()?ReviewUi.surface():ReviewUi.userBubble();
             bubble=new JPanel(new BorderLayout()){
-                @Override protected void paintComponent(Graphics graphics){var g=(Graphics2D)graphics.create();try{g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);g.setColor(fill);g.fillRoundRect(0,0,getWidth(),getHeight(),JBUI.scale(12),JBUI.scale(12));}finally{g.dispose();}}
+                @Override protected void paintComponent(Graphics graphics){var g=(Graphics2D)graphics.create();try{g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);g.setColor(fill);g.fillRoundRect(0,0,getWidth(),getHeight(),ReviewUi.arc(),ReviewUi.arc());}finally{g.dispose();}}
             };
             bubble.setOpaque(false);bubble.setBorder(JBUI.Borders.empty(7,10));
-            text.setEditorKit(new WrappingHtmlKit());text.setContentType("text/html");text.setEditable(false);text.setOpaque(false);
-            text.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES,true);text.setFont(CommentCardPainter.font());text.setBorder(null);text.setMargin(JBUI.emptyInsets());
-            text.getAccessibleContext().setAccessibleName((message.agent()?"OpenCode: ":"Вы: ")+message.text());
-            String color=hex(JBColor.namedColor("Label.foreground",JBColor.foreground()));
-            String markup=ThreadCard.markdown(message.text());
-            var document=org.jsoup.Jsoup.parseBodyFragment(markup);
-            for(var pre:document.select("pre")){
-                String code=pre.wholeText();pre.tagName("div").attr("style","font-family:monospace;margin-top:4px;margin-bottom:4px;");
-                pre.empty().appendElement("code").html(org.jsoup.nodes.Entities.escape(code).replace("\n","<br>").replace("  ","&nbsp; "));
-            }
-            text.setText("<html><head><style>body {margin:0;color:"+color+";} p {margin-top:0;margin-bottom:4px;} pre {margin-top:4px;margin-bottom:4px;} ul,ol {margin-top:2px;margin-bottom:4px;} blockquote {margin-left:10px;margin-right:0;}</style></head><body>"+document.body().html()+"</body></html>");
-            naturalWidth=text.getPreferredSize().width+JBUI.scale(20);
-            text.setCaretPosition(0);bubble.add(text);add(bubble);
+            text=new MessageRenderer(message.text(),sourcePath,changed);
+            naturalWidth=text.naturalWidth()+JBUI.scale(20);
+            bubble.add(text);add(bubble);
         }
         private int bubbleWidth(int width){
             int cap=Math.max(JBUI.scale(60),width-(width>=JBUI.scale(240)?JBUI.scale(32):JBUI.scale(10)));
@@ -101,21 +92,13 @@ final class ThreadMessages extends JPanel implements Scrollable {
             return Math.max(JBUI.scale(50),Math.min(cap,natural));
         }
         int heightFor(int width){
-            int bw=bubbleWidth(width);text.setSize(Math.max(1,bw-JBUI.scale(20)),Short.MAX_VALUE);
-            return author.getPreferredSize().height+JBUI.scale(3)+text.getPreferredSize().height+JBUI.scale(14);
+            int bw=bubbleWidth(width);int contentHeight=text.heightFor(Math.max(1,bw-JBUI.scale(20)));
+            return author.getPreferredSize().height+JBUI.scale(3)+contentHeight+JBUI.scale(14);
         }
         @Override public void doLayout(){
             int width=getWidth(),bw=bubbleWidth(width),x=message.agent()?0:width-bw,ah=author.getPreferredSize().height;
             author.setHorizontalAlignment(message.agent()?SwingConstants.LEFT:SwingConstants.RIGHT);
             author.setBounds(x,0,bw,ah);bubble.setBounds(x,ah+JBUI.scale(3),bw,Math.max(1,getHeight()-ah-JBUI.scale(3)));
         }
-        private static String hex(Color c){return String.format("#%02x%02x%02x",c.getRed(),c.getGreen(),c.getBlue());}
-    }
-    /** Allow long tokens/code lines to wrap instead of widening a diff column. */
-    private static final class WrappingHtmlKit extends HTMLEditorKit {
-        private final ViewFactory factory=new HTMLFactory(){
-            @Override public View create(Element e){View view=super.create(e);if(view instanceof InlineView)return new InlineView(e){@Override public float getMinimumSpan(int axis){return axis==View.X_AXIS?0:super.getMinimumSpan(axis);}};return view;}
-        };
-        @Override public ViewFactory getViewFactory(){return factory;}
     }
 }

@@ -22,7 +22,7 @@ public final class ThreadMessagesTest {
         SwingUtilities.invokeAndWait(()->{
             try{
                 ReviewThread thread=fixture();var messages=new ThreadMessages();messages.update(thread);
-                check(find(messages,JLabel.class).stream().map(JLabel::getText).toList().equals(List.of("Вы","OpenCode")),"exactly the latest two messages, with distinct authors");
+                check(find(messages,JLabel.class).stream().map(JLabel::getText).filter(t->t.equals("Вы")||t.equals("OpenCode")).toList().equals(List.of("Вы","OpenCode")),"exactly the latest two messages, with distinct authors");
                 var visible=find(messages,JEditorPane.class);check(visible.size()==2&&plain(visible.getFirst()).contains("Добавь тест")&&!plain(visible.getFirst()).contains("Ранний"),"older text hidden, chronological order retained");
                 JButton toggle=find(messages,JButton.class).getFirst();check(toggle.getText().contains("4"),"hidden count is messages, not turns");
                 toggle.doClick();check(find(messages,JEditorPane.class).size()==6,"history expands to all six messages");
@@ -39,8 +39,8 @@ public final class ThreadMessagesTest {
                 }
                 var codeThread=new ReviewThread();var codeTurn=new ReviewThread.Turn();codeTurn.text="```java\nList<T> " + "veryLongIdentifier".repeat(30)+";\n```";codeThread.turns.add(codeTurn);
                 var codeView=new ThreadMessages();codeView.update(codeThread);int narrowCodeHeight=codeView.contentHeight(220),wideCodeHeight=codeView.contentHeight(620);
-                check(narrowCodeHeight>wideCodeHeight,"long code lines wrap rather than disappear outside narrow bubbles");
-                check(plain(find(codeView,JEditorPane.class).getFirst()).contains("List<T>"),"code generics render exactly once");
+                check(narrowCodeHeight==wideCodeHeight,"long code lines use native horizontal scrolling without widening the bubble");
+                check(find(codeView,MessageRenderer.CodeBlock.class).getFirst().code.contains("List<T>"),"code generics render exactly once");
                 var empty=new ThreadMessages();empty.update(new ReviewThread());check(find(empty,JButton.class).isEmpty()&&find(empty,JEditorPane.class).isEmpty(),"empty thread has no phantom controls");
                 var one=new ReviewThread();one.turns.add(next);next.answer="";one.turns.set(0,next);empty.update(one);check(find(empty,JEditorPane.class).size()==1&&find(empty,JButton.class).isEmpty(),"one message needs no collapse action");
                 Project project=(Project)Proxy.newProxyInstance(Project.class.getClassLoader(),new Class[]{Project.class},(p,m,v)->switch(m.getName()){case "isDisposed"->false;case "hashCode"->System.identityHashCode(p);case "equals"->p==v[0];default->null;});
@@ -60,7 +60,7 @@ public final class ThreadMessagesTest {
                         check(card.getHeight()<600,"inline card bounded at width "+width);
                         BufferedImage picture=new BufferedImage(width,card.getHeight(),BufferedImage.TYPE_INT_RGB);Graphics2D g=picture.createGraphics();card.paint(g);g.dispose();ImageIO.write(picture,"png",dir.resolve("thread-"+width+".png").toFile());
                         Rectangle field=SwingUtilities.convertRectangle(input.getParent(),input.getBounds(),card);
-                        var button=find(card,JButton.class).stream().filter(b->b.getText().equals("В очередь")).findFirst().orElseThrow();Rectangle queue=SwingUtilities.convertRectangle(button.getParent(),button.getBounds(),card);
+                        var button=find(card,JButton.class).stream().filter(b->b.getText().equals("Добавить")).findFirst().orElseThrow();Rectangle queue=SwingUtilities.convertRectangle(button.getParent(),button.getBounds(),card);
                         check(!field.intersects(queue)&&queue.getMaxX()<=width,"composer actions fit without overlap at width "+width);
                     }
                 }

@@ -9,8 +9,12 @@ import { createBridge } from './protocol.mjs';
 export default Plugin.define({
   id: 'opencode-review-bridge',
   setup(context) {
+    const prepare=async input=>{
+      try { return await context.client.rpc(ReviewRpc).prepare({sessionID:input.sessionID,turns:input.turns}); }
+      catch { throw new Error('OpenCode отклонил подготовку комментариев. Очередь сохранена. Повтори отправку; если ошибка повторяется, перезапусти OpenCode и проверь журнал сервера.'); }
+    };
     const bridge = createBridge(context, {
-      prepare:input=>context.client.rpc(ReviewRpc).prepare({sessionID:input.sessionID,turns:input.turns}),
+      prepare,
       confirm:async receipt=>{
         if(!receipt.turns?.length)return false;
         const refs=[...new Set(receipt.turns.map(t=>t.threadID))].map(id=>({id,sessionID:receipt.sessionID}));
@@ -33,7 +37,9 @@ export default Plugin.define({
         try {
           if (request.method === 'GET' && url.pathname === '/status') {
             let threads=false;try{const version=await context.client.rpc(ReviewRpc).ping({});threads=version.version==='3.0.0';}catch{}
-            return Response.json({...bridge.status(),threads});
+            const status=bridge.status();
+            return Response.json({...status,threads,ready:status.ready&&threads,
+              error:!threads?'Серверный плагин Review не отвечает. Перезапусти OpenCode.':status.error});
           }
           if (request.method === 'POST' && url.pathname === '/threads') {
             const result=await context.client.rpc(ReviewRpc).read(await request.json());
@@ -54,7 +60,7 @@ export default Plugin.define({
             const old=bridge.receipt(input.id);if(old)return Response.json(bridge.append(input));
             if(input.turns){
               if(bridge.status().sessionID!==input.sessionID)throw new Error('В терминале сменилась сессия.');
-              await context.client.rpc(ReviewRpc).prepare({sessionID:input.sessionID,turns:input.turns});
+              await prepare(input);
             }
             return Response.json(bridge.append(input));
           }

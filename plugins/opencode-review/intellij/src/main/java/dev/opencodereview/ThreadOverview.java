@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
 /** Source previews only. The editable conversation stays in the editor. */
 final class ThreadOverview extends JPanel {
     private final JPanel cards=new JPanel();
-    private final JButton finish=new JButton("✓ Завершить обсуждение");
+    private boolean deletionEnabled=true;
     private final Consumer<String> open,complete,changes;
     private String selectedID,rendered="";
     private List<ReviewThread> threads=List.of();
@@ -23,9 +23,7 @@ final class ThreadOverview extends JPanel {
         super(new BorderLayout(0,JBUI.scale(8)));this.open=open;this.complete=complete;this.changes=changes;
         cards.setLayout(new BoxLayout(cards,BoxLayout.Y_AXIS));
         JScrollPane scroll=new JScrollPane(cards);scroll.setBorder(JBUI.Borders.empty());scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);scroll.getVerticalScrollBar().setUnitIncrement(JBUI.scale(20));add(scroll,BorderLayout.CENTER);
-        JPanel footer=new JPanel(new BorderLayout());footer.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(1,0,0,0,JBColor.border()),JBUI.Borders.emptyTop(8)));footer.add(finish);add(footer,BorderLayout.SOUTH);
-        finish.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));finish.setMargin(JBUI.insets(6,8));finish.setEnabled(false);
-        finish.addActionListener(e->{String id=selectedID;if(id!=null&&threads.stream().anyMatch(t->t.id.equals(id)))complete.accept(id);});
+
     }
     void update(List<ReviewThread> current,String selected){
         threads=current;selectedID=current.stream().anyMatch(t->Objects.equals(t.id,selected))?selected:null;
@@ -37,15 +35,21 @@ final class ThreadOverview extends JPanel {
             for(var thread:current){cards.add(new SourceCard(thread));cards.add(Box.createVerticalStrut(JBUI.scale(8)));}
             cards.revalidate();
         }
-        finish.setEnabled(selectedID!=null);
-        finish.setToolTipText(selectedID==null?"Выбери обсуждение в списке или открой его в редакторе":"Завершить выбранное обсуждение и удалить его неотправленные уточнения");
         cards.repaint();
+    }
+    void setDeletionEnabled(boolean enabled){
+        deletionEnabled=enabled;
+        for(Component card:cards.getComponents())if(card instanceof SourceCard source)source.delete.setEnabled(enabled);
     }
     private final class SourceCard extends JButton {
         private final ReviewThread thread;
+        private final JButton delete=ReviewUi.deleteButton();
         private final String question;
         private final String[] code;
         SourceCard(ReviewThread thread){
+            setLayout(null);add(delete);delete.setEnabled(deletionEnabled);
+            delete.setToolTipText("Удалить обсуждение");delete.getAccessibleContext().setAccessibleName("Удалить обсуждение");
+            delete.addActionListener(e->complete.accept(thread.id));
             this.thread=new ReviewThread(thread);putClientProperty("threadID",thread.id);
             question=org.jsoup.Jsoup.parse(ThreadCard.markdown(thread.root.comment)).text();
             code=thread.root.code.replace("\r\n","\n").replace('\r','\n').replace("\t","    ").split("\n",-1);
@@ -59,6 +63,7 @@ final class ThreadOverview extends JPanel {
             getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke("ENTER"),"openThread");
             getActionMap().put("openThread",new AbstractAction(){@Override public void actionPerformed(ActionEvent e){open.accept(thread.id);}});
         }
+        @Override public void doLayout(){int size=JBUI.scale(28);delete.setBounds(Math.max(0,getWidth()-JBUI.scale(6)-size),JBUI.scale(4),size,size);}
         @Override public Dimension getPreferredSize(){return new Dimension(JBUI.scale(300),JBUI.scale(70)+Math.max(1,Math.min(3,code.length))*getFontMetrics(codeFont()).getHeight());}
         @Override public Dimension getMaximumSize(){return new Dimension(Integer.MAX_VALUE,getPreferredSize().height);}
         @Override protected void paintComponent(Graphics graphics){
@@ -66,12 +71,12 @@ final class ThreadOverview extends JPanel {
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
                 g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
                 int pad=JBUI.scale(10),w=getWidth(),h=getHeight();boolean selected=thread.id.equals(selectedID);
-                g.setColor(new JBColor(getModel().isRollover()?0xEBF0F8:0xF5F7FB,getModel().isRollover()?0x343840:0x292C32));g.fillRoundRect(0,0,w-1,h-1,JBUI.scale(10),JBUI.scale(10));
-                g.setColor(selected||hasFocus()?new JBColor(0x3574CF,0x599DF6):JBColor.border());g.setStroke(new BasicStroke(selected?JBUI.scale(2):1));g.drawRoundRect(1,1,w-3,h-3,JBUI.scale(10),JBUI.scale(10));
+                g.setColor(getModel().isRollover()?new JBColor(0xEBF0F8,0x343840):ReviewUi.surface());g.fillRoundRect(0,0,w-1,h-1,ReviewUi.arc(),ReviewUi.arc());
+                g.setColor(selected||hasFocus()?new JBColor(0x3574CF,0x599DF6):JBColor.border());g.setStroke(new BasicStroke(selected?JBUI.scale(2):1));g.drawRoundRect(1,1,w-3,h-3,ReviewUi.arc(),ReviewUi.arc());
                 g.setFont(CommentCardPainter.font());g.setColor(new JBColor(0x2862AD,0x8AB4F8));
                 String location=thread.root.shortLocation();String prefix=thread.root.sideLabel()+" · ";if("WORKTREE".equals(thread.root.side)&&location.startsWith(prefix))location=location.substring(prefix.length());
-                int baseline=pad+g.getFontMetrics().getAscent();g.drawString(elide(g.getFontMetrics(),location,w-pad*2-(thread.hasUnreadAnswer()?JBUI.scale(16):0)),pad,baseline);
-                if(thread.hasUnreadAnswer()){g.setColor(new JBColor(0x3574CF,0x548AF7));int dot=JBUI.scale(6);g.fillOval(w-pad-dot,pad+(g.getFontMetrics().getHeight()-dot)/2,dot,dot);}
+                int baseline=pad+g.getFontMetrics().getAscent();g.drawString(elide(g.getFontMetrics(),location,w-pad*2-JBUI.scale(32)-(thread.hasUnreadAnswer()?JBUI.scale(16):0)),pad,baseline);
+                if(thread.hasUnreadAnswer()){g.setColor(new JBColor(0x3574CF,0x548AF7));int dot=JBUI.scale(6);g.fillOval(w-pad-dot-JBUI.scale(32),pad+(g.getFontMetrics().getHeight()-dot)/2,dot,dot);}
                 g.setFont(CommentCardPainter.font().deriveFont(Font.BOLD));g.setColor(JBColor.foreground());baseline+=g.getFontMetrics().getHeight()+JBUI.scale(4);g.drawString(elide(g.getFontMetrics(),question,w-pad*2),pad,baseline);
                 int top=baseline+JBUI.scale(9),bottom=h-pad,cw=Math.max(1,w-pad*2);g.setColor(new JBColor(0xE9EDF3,0x202226));g.fillRoundRect(pad,top,cw,Math.max(1,bottom-top),JBUI.scale(5),JBUI.scale(5));
                 g.setFont(codeFont());FontMetrics fm=g.getFontMetrics();int count=Math.min(3,code.length),gutter=fm.stringWidth(String.valueOf(thread.root.startLine+count-1))+JBUI.scale(16),textX=pad+gutter+JBUI.scale(8);

@@ -25,11 +25,13 @@ public final class ReviewCreationDraftTest {
         check(!service.saveInputsForTransfer(), "expanded creation needs explicit queue or collapse");
         service.endEditing(note.id);
         check(service.saveInputsForTransfer() && service.snapshot().isEmpty(), "collapse unlocks other transfers without queueing draft");
-        var restored = restart(service); var draft = restored.creationDrafts().getFirst();
-        check(draft.comment.equals(raw) && draft.id.equals(note.id), "raw Unicode draft survives actual IDEA XML restart: [" + draft.comment.replace("\n", "<NL>") + "] expected [" + raw.replace("\n", "<NL>") + "]");
+        var migrated = restart(service); var draft = migrated.snapshot().getFirst();
+        check(migrated.creationDrafts().isEmpty(), "legacy inputs migrate to normal comments");
+        check(draft.comment.equals(raw) && draft.id.equals(note.id), "migration preserves Unicode text and identity");
         check(draft.code.equals("two") && draft.startLine == 2 && draft.endLine == 2, "source snapshot and range survive restart");
         draft.comment = "foreign change";
-        check(restored.creationDrafts().getFirst().comment.equals(raw), "snapshot does not expose mutable state");
+        check(migrated.snapshot().getFirst().comment.equals(raw), "snapshot does not expose mutable state");
+        var restored = service;
         check(restored.queueCreationDraft(note.id, " ") != null && restored.snapshot().isEmpty(), "blank text never queues");
         check(restored.queueCreationDraft(note.id, "x".repeat(10001)) != null, "over-limit text never queues");
         check(restored.queueCreationDraft(note.id, raw) == null, "explicit queue succeeds");
@@ -46,7 +48,7 @@ public final class ReviewCreationDraftTest {
         var malformed = new ReviewService.QueueState(); malformed.creationDrafts.add(new ReviewComment());
         restored.loadState(malformed); check(restored.creationDrafts().isEmpty(), "malformed persisted draft rejected");
         var empty = ReviewQueueRestartTest.service(); empty.createCommentDraft(ReviewComment.capture("/tmp/Blank.java", "x", 0, 1));
-        check(restart(empty).creationDrafts().getFirst().comment.isEmpty(), "empty collapsed draft can be resumed");
+        check(restart(empty).creationDrafts().isEmpty() && restart(empty).snapshot().isEmpty(), "empty legacy input is discarded on restart");
 
         var moving = ReviewQueueRestartTest.service(); var anchored = ReviewComment.capture("/tmp/Moving.java", "code", 0, 4); moving.createCommentDraft(anchored);
         String moved = "prefix\ncode";

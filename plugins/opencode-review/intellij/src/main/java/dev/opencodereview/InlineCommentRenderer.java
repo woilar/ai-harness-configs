@@ -9,6 +9,7 @@ import java.awt.*;
 final class InlineCommentRenderer implements EditorCustomElementRenderer {
     final ReviewComment note;
     final boolean thread;
+    float closeHover;
     InlineCommentRenderer(ReviewComment note){this(note,false);}
     InlineCommentRenderer(ReviewComment note,boolean thread){this.note=note;this.thread=thread;}
     private static int px(int value) { return CommentCardPainter.px(value); }
@@ -29,7 +30,7 @@ final class InlineCommentRenderer implements EditorCustomElementRenderer {
     }
     @Override public void paint(Inlay inlay, Graphics graphics, Rectangle bounds, TextAttributes attributes) {
         String range = note.startLine == note.endLine ? String.valueOf(note.startLine) : note.startLine + "–" + note.endLine;
-        CommentCardPainter.paint(graphics, cardBounds(bounds), note, "Строки " + range, !thread);
+        CommentCardPainter.paint(graphics, cardBounds(bounds), note, "Строки " + range, !thread, closeHover);
     }
     boolean closeHit(Inlay<?> inlay, Point point) {
         Rectangle bounds = inlay.getBounds();

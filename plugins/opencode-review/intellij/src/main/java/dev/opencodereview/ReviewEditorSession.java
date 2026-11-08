@@ -50,6 +50,25 @@ final class ReviewEditorSession implements Disposable {
     private RangeHighlighter plus;
     private int plusLine;
     private boolean disposed;
+    private Inlay<?> hoveredClose;
+    private final javax.swing.Timer closeAnimation = new javax.swing.Timer(16, e -> animateClose());
+    private void hoverClose(Inlay<?> next) {
+        if (hoveredClose == next) return;
+        hoveredClose = next;
+        if (!closeAnimation.isRunning()) closeAnimation.start();
+    }
+    private void animateClose() {
+        boolean moving = false;
+        for (var inlay : inlineNotes.values()) if (inlay.isValid()) {
+            var renderer = inlay.getRenderer();
+            float target = inlay == hoveredClose ? 1 : 0;
+            float before = renderer.closeHover;
+            renderer.closeHover = target > before ? Math.min(target,before+0.16f) : Math.max(target,before-0.16f);
+            if (before != renderer.closeHover) inlay.repaint();
+            moving |= renderer.closeHover != target;
+        }
+        if (!moving) closeAnimation.stop();
+    }
     private final EditorMouseMotionListener mouseListener;
     private final CaretListener caretListener;
     private final EditorMouseListener clickListener;
@@ -62,6 +81,7 @@ final class ReviewEditorSession implements Disposable {
             @Override public void mouseMoved(EditorMouseEvent event) {
                 boolean overClose = event.getInlay() != null && event.getInlay().getRenderer() instanceof InlineCommentRenderer renderer
                     && renderer.closeHit(event.getInlay(), editorPoint(event));
+                hoverClose(overClose ? event.getInlay() : null);
                 if (editor instanceof EditorEx ex) ex.setCustomCursor(ReviewEditorSession.this,
                     overClose ? Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) : null);
                 String hovered = event.getInlay() != null && event.getInlay().getRenderer() instanceof InlineCommentRenderer card ? card.note.id : null;
@@ -100,6 +120,7 @@ final class ReviewEditorSession implements Disposable {
             }
             @Override public void mouseReleased(EditorMouseEvent event) { if (hit(event) != null) event.consume(); }
             @Override public void mouseExited(EditorMouseEvent event) {
+                hoverClose(null);
                 service.highlight(null);
                 if (editor instanceof EditorEx ex) ex.setCustomCursor(ReviewEditorSession.this, null);
             }
@@ -324,9 +345,12 @@ final class ReviewEditorSession implements Disposable {
         @Override public int hashCode() { return Objects.hash(id, tooltip); }
     }
     @Override public void dispose() {
+        closeAnimation.stop();hoveredClose=null;
         disposed = true;
         if (!project.isDisposed()) for (EditorDraft draft : List.copyOf(editing.values()))
             WriteIntentReadAction.run(draft.form::save);
+        if (!project.isDisposed()) for (CreationView view : List.copyOf(creations.values()))
+            WriteIntentReadAction.run(view.composer.form()::save);
         for (String id : List.copyOf(editing.keySet())) finishInlineEdit(id);
         if (editor instanceof EditorEx ex) ex.setCustomCursor(this, null);
         editor.removeEditorMouseMotionListener(mouseListener);

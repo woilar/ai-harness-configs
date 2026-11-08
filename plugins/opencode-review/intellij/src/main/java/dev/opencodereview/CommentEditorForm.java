@@ -28,6 +28,7 @@ final class CommentEditorForm extends JPanel {
     private Consumer<String> changed = text -> {};
     private Runnable sizeChanged = () -> {};
     private boolean finished;
+    private Runnable discardEmpty;
     private int editorWidth;
 
     CommentEditorForm(String location, String initial, boolean editing, Function<String, String> saveAction, Runnable cancel) {
@@ -47,6 +48,7 @@ final class CommentEditorForm extends JPanel {
         if (editing) {
             heading.add(locationLabel, BorderLayout.SOUTH); add(heading, BorderLayout.NORTH);
         } else setToolTipText(location);
+        input.addFocusListener(new FocusAdapter(){@Override public void focusGained(FocusEvent e){repaint();}@Override public void focusLost(FocusEvent e){repaint();}});
         input.setText(initial); input.setRows(3); input.setColumns(1);
         input.setLineWrap(true); input.setWrapStyleWord(true); input.setFont(CommentCardPainter.font()); input.setMargin(JBUI.insets(editing ? 8 : 0));
         UndoManager undo = new UndoManager(); input.getDocument().addUndoableEditListener(undo);
@@ -67,8 +69,8 @@ final class CommentEditorForm extends JPanel {
         }
         add(scroll, BorderLayout.CENTER);
         save = editing ? new JButton("Сохранить") : new CompactActionButton(true);
-        if (!editing) save.getAccessibleContext().setAccessibleName("В очередь");
-        save.setToolTipText(SystemInfo.isMac ? "Добавить в очередь · ⌘Enter" : "Добавить в очередь · Ctrl+Enter");
+        if (!editing) save.getAccessibleContext().setAccessibleName("Добавить");
+        save.setToolTipText(editing ? (SystemInfo.isMac ? "Сохранить · ⌘Enter" : "Сохранить · Ctrl+Enter") : "Добавить комментарий · Enter");
         JButton cancelButton = editing ? new JButton("Отмена") : new CompactActionButton(false);
         cancelButton.addActionListener(e -> collapse.run());
         actions.setOpaque(false); actions.add(cancelButton); actions.add(save);
@@ -111,6 +113,12 @@ final class CommentEditorForm extends JPanel {
         getActionMap().put("save-comment", new AbstractAction() {
             @Override public void actionPerformed(ActionEvent event) { save(); }
         });
+        if (!editing) {
+            input.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "save-comment");
+            input.getActionMap().put("save-comment", getActionMap().get("save-comment"));
+            input.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, menuMask), javax.swing.text.DefaultEditorKit.insertBreakAction);
+            input.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.SHIFT_DOWN_MASK), javax.swing.text.DefaultEditorKit.insertBreakAction);
+        }
         getInputMap(WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "cancel-comment");
         getActionMap().put("cancel-comment", new AbstractAction() {
             @Override public void actionPerformed(ActionEvent event) { collapse.run(); }
@@ -140,12 +148,32 @@ final class CommentEditorForm extends JPanel {
         setEditorWidth(JBUI.scale(350), () -> {});
     }
 
+    /** Ordinary comments commit on blur; empty inputs disappear without a queue entry. */
+    void autoSaveOnBlur(Runnable discardEmpty) {
+        this.discardEmpty = discardEmpty;
+        Component rail = ((BorderLayout)getLayout()).getLayoutComponent(BorderLayout.EAST);
+        if (rail != null) remove(rail);
+        getActionMap().put("cancel-comment", new AbstractAction() {
+            @Override public void actionPerformed(ActionEvent event) { save(); }
+        });
+        input.addFocusListener(new FocusAdapter() {
+            @Override public void focusLost(FocusEvent event) {
+                SwingUtilities.invokeLater(() -> {
+                    Component owner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+                    if (!finished && (owner == null || !SwingUtilities.isDescendingFrom(owner, CommentEditorForm.this)))
+                        com.intellij.openapi.application.WriteIntentReadAction.run(() -> save());
+                });
+            }
+        });
+        updateSize();
+    }
+
     void onChanged(Consumer<String> listener) { changed = listener; }
     void setLocation(String location) { locationLabel.setText(location); locationLabel.setToolTipText(location); setToolTipText(location); }
     void setEditorWidth(int width, Runnable listener) { editorWidth = Math.max(120, width); sizeChanged = listener; updateSize(); }
     private void updateSize() {
         int width = editorWidth > 0 ? editorWidth : JBUI.scale(350);
-        int rail = editing ? 0 : JBUI.scale(62);
+        int rail = editing || discardEmpty != null ? 0 : JBUI.scale(62);
         int available = Math.max(1, width - getInsets().left - getInsets().right - rail);
         // Ask Swing's wrapped text view for its actual height, including word wrapping and tabs.
         int textWidth = Math.max(1, available - scroll.getVerticalScrollBar().getPreferredSize().width);
@@ -162,11 +190,7 @@ final class CommentEditorForm extends JPanel {
     @Override protected void paintComponent(Graphics graphics) {
         super.paintComponent(graphics); var g = (Graphics2D) graphics.create();
         try {
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g.setColor(JBColor.namedColor("Panel.background", new JBColor(0xF5F7FB, 0x292C32)));
-            g.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, JBUI.scale(10), JBUI.scale(10));
-            g.setColor(JBColor.border()); g.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, JBUI.scale(10), JBUI.scale(10));
-
+            ReviewUi.panel(g,getWidth(),getHeight(),input.hasFocus());
         } finally { g.dispose(); }
     }
     static String validation(String text) {
@@ -176,6 +200,7 @@ final class CommentEditorForm extends JPanel {
     }
     boolean save() {
         if (finished) return true;
+        if (discardEmpty != null && input.getText().isBlank()) { finished = true; discardEmpty.run(); return true; }
         String message = validation(input.getText());
         if (message == null) message = saveAction.apply(input.getText().strip());
         if (message == null) finished = true;
@@ -226,6 +251,10 @@ final class CommentEditorForm extends JPanel {
         }
     }
     private static final class CommentInput extends JTextArea implements KeyboardAwareFocusOwner {
+        @Override protected void paintComponent(Graphics graphics){super.paintComponent(graphics);if(getText().isEmpty()){
+            graphics.setColor(ReviewUi.muted());graphics.setFont(getFont());
+            graphics.drawString("Добавить комментарий…",getInsets().left+2,getInsets().top+graphics.getFontMetrics().getAscent());
+        }}
         @Override public boolean skipKeyEventDispatcher(KeyEvent event) { return true; }
     }
 }
