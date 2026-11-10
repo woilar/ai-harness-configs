@@ -28,7 +28,7 @@ public final class ReviewToolWindowFactory implements ToolWindowFactory, DumbAwa
             try{
                 g.translate(x,y);g.scale(getIconWidth()/16.0,getIconHeight()/16.0);
                 g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING,java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
-                g.setColor(ReviewUi.muted());g.setStroke(new java.awt.BasicStroke(1.4f));
+                g.setColor(com.intellij.ui.JBColor.foreground());g.setStroke(new java.awt.BasicStroke(1.4f));
                 g.drawRoundRect(1,3,12,9,3,3);g.drawLine(4,12,2,15);
                 if(unread){g.setColor(ReviewUi.accent());g.fillOval(9,0,7,7);}
             }finally{g.dispose();}
