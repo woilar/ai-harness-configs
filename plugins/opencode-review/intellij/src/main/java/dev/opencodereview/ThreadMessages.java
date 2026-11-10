@@ -22,6 +22,26 @@ final class ThreadMessages extends JPanel implements Scrollable {
     @Override public void addNotify(){super.addNotify();readingTimer.start();}
     @Override public void removeNotify(){readingTimer.stop();rows.forEach(row->row.visibleSince=0);super.removeNotify();}
 
+    private boolean wide;
+    void setWide(boolean value){wide=value;}
+
+    /** Keep the same message in view when line wrapping changes with editor width. */
+    Runnable readingPosition(){
+        JViewport viewport=(JViewport)SwingUtilities.getAncestorOfClass(JViewport.class,this);
+        if(viewport==null)return ()->{};
+        int y=viewport.getViewPosition().y;
+        boolean bottom=y+viewport.getExtentSize().height>=getHeight()-JBUI.scale(8);
+        BubbleRow anchor=rows.stream().filter(row->row.getY()+row.getHeight()>y).findFirst().orElse(null);
+        String key=anchor==null?null:anchor.message.key();
+        double fraction=anchor==null?0:(double)(y-anchor.getY())/Math.max(1,anchor.getHeight());
+        return ()->{
+            setSize(viewport.getExtentSize().width,getPreferredSize().height);doLayout();
+            int max=Math.max(0,getHeight()-viewport.getExtentSize().height),next=y;
+            for(var row:rows)if(row.message.key().equals(key)){next=row.getY()+(int)(fraction*row.getHeight());break;}
+            viewport.setViewPosition(new Point(0,bottom?max:Math.max(0,Math.min(next,max))));
+            unreadChanged.run();
+        };
+    }
     private String sourcePath="";
     private final JButton older=new JButton();
     private final List<BubbleRow> rows=new ArrayList<>();
@@ -130,7 +150,7 @@ final class ThreadMessages extends JPanel implements Scrollable {
     @Override public int getScrollableUnitIncrement(Rectangle r,int orientation,int direction){return JBUI.scale(20);}
     @Override public int getScrollableBlockIncrement(Rectangle r,int orientation,int direction){return Math.max(JBUI.scale(20),r.height-JBUI.scale(20));}
 
-    private static final class BubbleRow extends JPanel {
+    private final class BubbleRow extends JPanel {
         private final Message message;
         private final JLabel author;
         private final JPanel bubble;
@@ -179,7 +199,7 @@ final class ThreadMessages extends JPanel implements Scrollable {
         }
         private int bubbleWidth(int width){
             int cap=Math.max(JBUI.scale(60),width-(width>=JBUI.scale(240)?JBUI.scale(32):JBUI.scale(10)));
-            int natural=naturalWidth;
+            int natural=wide&&text.hasCode()?cap:naturalWidth;
             return Math.max(JBUI.scale(50),Math.min(cap,natural));
         }
         int heightFor(int width){

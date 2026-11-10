@@ -35,6 +35,96 @@ final class ThreadCard extends JPanel {
     private final JTextArea replyMeasurement=new JTextArea();
     private final JPanel queueSlot=new JPanel(new BorderLayout());
     private boolean updating;
+    private final JButton expand=ReviewUi.icon(expansionIcon(false),"Развернуть на область редактора");
+    private JComponent editorArea;
+    private JPanel inlineSlot;
+    private JLayeredPane expandedLayer;
+    private int viewRevision;
+    private final java.awt.event.ComponentAdapter expansionResize=new java.awt.event.ComponentAdapter(){
+        @Override public void componentResized(java.awt.event.ComponentEvent e){layoutExpandedView();}
+        @Override public void componentMoved(java.awt.event.ComponentEvent e){layoutExpandedView();}
+    };
+    private final java.awt.event.HierarchyBoundsAdapter expansionBounds=new java.awt.event.HierarchyBoundsAdapter(){
+        @Override public void ancestorResized(java.awt.event.HierarchyEvent e){layoutExpandedView();}
+        @Override public void ancestorMoved(java.awt.event.HierarchyEvent e){layoutExpandedView();}
+    };
+    private final java.awt.event.HierarchyListener expansionVisibility=e->{
+        if(expandedLayer!=null&&!editorArea.isShowing())closeExpandedView(false);
+    };
+    private final KeyEventDispatcher expansionEscape=e->{
+        if(expandedLayer==null||e.getID()!=KeyEvent.KEY_PRESSED||e.getKeyCode()!=KeyEvent.VK_ESCAPE
+            ||!(e.getSource() instanceof Component source)||!SwingUtilities.isDescendingFrom(source,this)
+            ||MenuSelectionManager.defaultManager().getSelectedPath().length>0)return false;
+        closeExpandedView(true);e.consume();return true;
+    };
+
+    private static Icon expansionIcon(boolean restore){
+        return new Icon(){
+            public int getIconWidth(){return JBUI.scale(16);}
+            public int getIconHeight(){return JBUI.scale(16);}
+            public void paintIcon(Component c,Graphics graphics,int x,int y){
+                Graphics2D g=(Graphics2D)graphics.create();
+                try{
+                    g.translate(x,y);g.scale(getIconWidth()/16.0,getIconHeight()/16.0);
+                    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
+                    g.setColor(c.getForeground());g.setStroke(new BasicStroke(1.5f));
+                    g.drawLine(3,13,6,10);g.drawLine(10,6,13,3);
+                    if(restore){g.drawLine(2,10,6,10);g.drawLine(6,10,6,14);g.drawLine(10,2,10,6);g.drawLine(10,6,14,6);}
+                    else{g.drawLine(3,9,3,13);g.drawLine(3,13,7,13);g.drawLine(9,3,13,3);g.drawLine(13,3,13,7);}
+                }finally{g.dispose();}
+            }
+        };
+    }
+    void enableEditorExpansion(JComponent area,JPanel slot){
+        editorArea=area;inlineSlot=slot;expand.setVisible(true);
+    }
+    private void toggleExpandedView(){
+        if(expandedLayer!=null){closeExpandedView(true);return;}
+        JRootPane root=editorArea==null?null:SwingUtilities.getRootPane(editorArea);
+        if(root==null||!editorArea.isShowing())return;
+        Runnable restore=history.readingPosition();
+        inlineSlot.setPreferredSize(inlineSlot.getSize());
+        expandedLayer=root.getLayeredPane();
+        history.setWide(true);expand.setIcon(expansionIcon(true));expand.setToolTipText("Вернуть в редактор (Esc)");
+        expand.getAccessibleContext().setAccessibleName("Вернуть в редактор");
+        expandedLayer.add(this,JLayeredPane.PALETTE_LAYER);
+        editorArea.addComponentListener(expansionResize);
+        editorArea.addHierarchyBoundsListener(expansionBounds);
+        editorArea.addHierarchyListener(expansionVisibility);
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(expansionEscape);
+        layoutExpandedView();restoreAfterLayout(restore);expand.requestFocusInWindow();
+    }
+    void closeExpandedView(boolean focus){
+        if(expandedLayer==null)return;
+        Runnable restore=history.readingPosition();
+        JLayeredPane layer=expandedLayer;expandedLayer=null;
+        editorArea.removeComponentListener(expansionResize);
+        editorArea.removeHierarchyBoundsListener(expansionBounds);
+        editorArea.removeHierarchyListener(expansionVisibility);
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(expansionEscape);
+        history.setWide(false);expand.setIcon(expansionIcon(false));expand.setToolTipText("Развернуть на область редактора");
+        expand.getAccessibleContext().setAccessibleName("Развернуть на область редактора");
+        inlineSlot.add(this,BorderLayout.CENTER);inlineSlot.setPreferredSize(null);
+        updateSize();inlineSlot.revalidate();layer.repaint();restoreAfterLayout(restore);
+        if(focus)expand.requestFocusInWindow();
+    }
+    private void layoutExpandedView(){
+        if(expandedLayer==null)return;
+        Runnable restore=history.readingPosition();
+        Rectangle bounds=SwingUtilities.convertRectangle(editorArea,editorArea.getVisibleRect(),expandedLayer);
+        setBounds(bounds);updateSize();restoreAfterLayout(restore);
+    }
+    private void restoreAfterLayout(Runnable restore){
+        int version=++viewRevision;
+        SwingUtilities.invokeLater(()->{
+            if(version!=viewRevision)return;
+            layoutTree(this);restore.run();
+        });
+    }
+    private static void layoutTree(Container container){
+        container.doLayout();
+        for(Component child:container.getComponents())if(child instanceof Container nested)layoutTree(nested);
+    }
     private final AWTEventListener outsideClickListener=this::collapseOnOutsideClick;
 
     @Override public void addNotify(){
@@ -46,7 +136,7 @@ final class ThreadCard extends JPanel {
         super.removeNotify();
     }
     private void collapseOnOutsideClick(AWTEvent event){
-        if(!(event instanceof MouseEvent mouse)||mouse.getID()!=MouseEvent.MOUSE_PRESSED||!isShowing())return;
+        if(expandedLayer!=null||!(event instanceof MouseEvent mouse)||mouse.getID()!=MouseEvent.MOUSE_PRESSED||!isShowing())return;
         Component source=mouse.getComponent();
         // Popup menus belong to their invoker even when Swing puts them in another window.
         for(Component current=source;current!=null;){
@@ -56,7 +146,7 @@ final class ThreadCard extends JPanel {
         if(SwingUtilities.getWindowAncestor(source)!=SwingUtilities.getWindowAncestor(this))return;
         // Let the original click finish; never consume it or change its target mid-dispatch.
         SwingUtilities.invokeLater(()->{
-            if(!isShowing())return;
+            if(!isShowing()||expandedLayer!=null)return;
             WriteIntentReadAction.run(()->{
                 ReviewThread thread=service.thread(id);
                 if(thread!=null&&thread.expanded)service.toggleThread(id);
@@ -80,7 +170,12 @@ final class ThreadCard extends JPanel {
         header.addActionListener(e->WriteIntentReadAction.run(()->service.toggleThread(id)));
         JPanel top=new JPanel(new BorderLayout(4,4));top.setOpaque(false);top.add(header,BorderLayout.CENTER);
         delete.setToolTipText("Удалить обсуждение");delete.getAccessibleContext().setAccessibleName("Удалить обсуждение");
-        delete.addActionListener(e->service.confirmDeleteThread(id));top.add(delete,BorderLayout.EAST);
+        delete.addActionListener(e->service.confirmDeleteThread(id));
+        expand.setVisible(false);expand.setToolTipText("Развернуть на область редактора");
+        expand.getAccessibleContext().setAccessibleName("Развернуть на область редактора");
+        expand.addActionListener(e->toggleExpandedView());
+        JPanel actions=new JPanel(new FlowLayout(FlowLayout.RIGHT,4,0));actions.setOpaque(false);
+        actions.add(expand);actions.add(delete);top.add(actions,BorderLayout.EAST);
         add(top,BorderLayout.NORTH);
         log.setBorder(null);log.setOpaque(false);log.getViewport().setOpaque(false);log.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);log.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
         log.getVerticalScrollBar().setUnitIncrement(JBUI.scale(20));
@@ -138,13 +233,13 @@ final class ThreadCard extends JPanel {
     }
     void setEditorWidth(int width,Runnable listener){editorWidth=width;sizeChanged=listener;updateSize();}
     private void updateSize(){
-        int width=editorWidth>0?editorWidth:getWidth()>0?getWidth():JBUI.scale(400);
+        int width=expandedLayer!=null?Math.max(1,getWidth()):editorWidth>0?editorWidth:getWidth()>0?getWidth():JBUI.scale(400);
         layoutComposer(width);sizeReply(width);
         int contentWidth=Math.max(1,width-JBUI.scale(16));
         int height=Math.min(JBUI.scale(260),history.contentHeight(contentWidth-JBUI.scale(16)));
         log.setPreferredSize(new Dimension(contentWidth,Math.max(JBUI.scale(48),height)));
-        if(editorWidth>0){setPreferredSize(null);int h=super.getPreferredSize().height;setPreferredSize(new Dimension(editorWidth,h));}
-        revalidate();repaint();sizeChanged.run();
+        if(editorWidth>0&&expandedLayer==null){setPreferredSize(null);int h=super.getPreferredSize().height;setPreferredSize(new Dimension(editorWidth,h));}
+        revalidate();repaint();if(expandedLayer==null)sizeChanged.run();
     }
     private void layoutComposer(int width){
         boolean narrow=width<JBUI.scale(310);
@@ -164,6 +259,11 @@ final class ThreadCard extends JPanel {
         replyMeasurement.setTabSize(reply.getTabSize());replyMeasurement.setText(reply.getText());
         replyMeasurement.setSize(textWidth,Integer.MAX_VALUE);
         int height=replyMeasurement.getPreferredSize().height+border.top+border.bottom;
+        if(expandedLayer!=null){
+            int cap=Math.max(JBUI.scale(48),getHeight()/3);
+            replyScroll.setVerticalScrollBarPolicy(height>cap?ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED:ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
+            height=Math.min(height,cap);
+        }else replyScroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
         Dimension desired=new Dimension(Math.max(1,available),height);
         if(!desired.equals(replyScroll.getPreferredSize())){replyScroll.setPreferredSize(desired);revalidate();}
     }
