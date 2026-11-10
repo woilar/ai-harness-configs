@@ -18,6 +18,15 @@ final class ThreadCard extends JPanel {
     private final JLabel error=new JLabel();
     private final ThreadMessages history=new ThreadMessages();
     private final JScrollPane log=new JScrollPane(history);
+    private final JButton jumpToNew=new JButton();
+    private final JLayeredPane historyLayer=new JLayeredPane(){
+        @Override public Dimension getPreferredSize(){return log.getPreferredSize();}
+        @Override public void doLayout(){
+            log.setBounds(0,0,getWidth(),getHeight());
+            Dimension size=jumpToNew.getPreferredSize();
+            jumpToNew.setBounds(Math.max(0,getWidth()-size.width-JBUI.scale(18)),Math.max(0,getHeight()-size.height-JBUI.scale(8)),Math.min(size.width,getWidth()),size.height);
+        }
+    };
     private final JPanel composer=new JPanel(new BorderLayout(6,4));
     private int editorWidth;
     private Runnable sizeChanged=()->{};
@@ -74,7 +83,14 @@ final class ThreadCard extends JPanel {
         delete.addActionListener(e->service.confirmDeleteThread(id));top.add(delete,BorderLayout.EAST);
         add(top,BorderLayout.NORTH);
         log.setBorder(null);log.setOpaque(false);log.getViewport().setOpaque(false);log.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);log.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
-        log.getVerticalScrollBar().setUnitIncrement(JBUI.scale(20));add(log,BorderLayout.CENTER);
+        log.getVerticalScrollBar().setUnitIncrement(JBUI.scale(20));
+        historyLayer.add(log,JLayeredPane.DEFAULT_LAYER);historyLayer.add(jumpToNew,JLayeredPane.PALETTE_LAYER);add(historyLayer,BorderLayout.CENTER);
+        jumpToNew.setVisible(false);jumpToNew.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        jumpToNew.setForeground(new com.intellij.ui.JBColor(0x2862AD,0x8AB4F8));
+        jumpToNew.setToolTipText("Перейти к первому непрочитанному ответу");
+        jumpToNew.addActionListener(e->history.jumpToUnread());
+        history.onUnreadChanged(this::updateUnreadNavigation);
+        log.getViewport().addChangeListener(e->updateUnreadNavigation());
         history.onChanged(this::updateSize);
         history.onAnswerRead(text->service.markAnswerRead(id,text));
         reply.setMargin(JBUI.insets(8,10));reply.setRows(1);reply.setColumns(1);reply.setLineWrap(true);reply.setWrapStyleWord(true);reply.setFont(CommentCardPainter.font());reply.getAccessibleContext().setAccessibleName("Ответ в тред OpenCode");
@@ -106,6 +122,14 @@ final class ThreadCard extends JPanel {
         composer.add(queueSlot,BorderLayout.EAST);bottom.add(composer,BorderLayout.CENTER);
         error.setVisible(false);error.setFont(CommentCardPainter.font());bottom.add(error,BorderLayout.SOUTH);add(bottom,BorderLayout.SOUTH);
         update(thread);
+    }
+    private void updateUnreadNavigation(){
+        int count=history.unreadBelowCount();
+        String label="↓ Новые сообщения · "+count;
+        boolean visible=count>0;
+        if(label.equals(jumpToNew.getText())&&jumpToNew.isVisible()==visible)return;
+        jumpToNew.setText(label);jumpToNew.setVisible(visible);
+        historyLayer.revalidate();historyLayer.repaint();
     }
     @Override protected void paintComponent(Graphics graphics){
         super.paintComponent(graphics);var g=(Graphics2D)graphics.create();try{
