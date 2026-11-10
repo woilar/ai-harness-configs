@@ -41,6 +41,7 @@ public final class ReviewQueueRestartTest {
         String text="prefix\ncode";
         Document doc=(Document)Proxy.newProxyInstance(Document.class.getClassLoader(),new Class[]{Document.class},(p,m,a)->switch(m.getName()) {
             case "getCharsSequence" -> text;
+            case "getTextLength" -> text.length();
             case "getLineNumber" -> text.substring(0,(Integer)a[0]).chars().filter(c->c=='\n').count()>0?1:0;
             default -> null;
         });
@@ -52,7 +53,7 @@ public final class ReviewQueueRestartTest {
             default -> null;
         });
         var f=ReviewService.class.getDeclaredField("anchors");f.setAccessible(true);
-        ((Map<String,RangeMarker>)f.get(s)).put(note.id,marker);
+        ((Map<String,ReviewAnchor>)f.get(s)).put(note.id,new ReviewAnchor(doc,marker));
         s.documentChanged(doc);
         check(s.snapshot().getFirst().startLine==2&&!s.snapshot().getFirst().changed,"live anchor moved; message text and selected code unchanged");
     }
