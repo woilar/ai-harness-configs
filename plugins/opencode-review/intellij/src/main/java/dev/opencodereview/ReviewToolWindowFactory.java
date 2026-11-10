@@ -15,9 +15,14 @@ public final class ReviewToolWindowFactory implements ToolWindowFactory, DumbAwa
         var window=manager.getToolWindow("OpenCode Review");
         if(window!=null)window.setIcon(new DiscussionIcon(ReviewThread.unreadCount(threads)>0));
     }
-    private record DiscussionIcon(boolean unread) implements javax.swing.Icon {
-        public int getIconWidth(){return com.intellij.util.ui.JBUI.scale(16);}
-        public int getIconHeight(){return com.intellij.util.ui.JBUI.scale(16);}
+    private record DiscussionIcon(boolean unread,float scale) implements com.intellij.openapi.util.ScalableIcon {
+        DiscussionIcon(boolean unread){this(unread,1f);}
+        @Override public float getScale(){return scale;}
+        @Override public javax.swing.Icon scale(float factor){
+            return factor==scale?this:new DiscussionIcon(unread,factor);
+        }
+        public int getIconWidth(){return Math.round(com.intellij.util.ui.JBUI.scale(16)*scale);}
+        public int getIconHeight(){return Math.round(com.intellij.util.ui.JBUI.scale(16)*scale);}
         public void paintIcon(java.awt.Component c,java.awt.Graphics graphics,int x,int y){
             var g=(java.awt.Graphics2D)graphics.create();
             try{
