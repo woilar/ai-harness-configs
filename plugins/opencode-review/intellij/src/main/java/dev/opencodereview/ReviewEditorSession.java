@@ -39,7 +39,11 @@ final class ReviewEditorSession implements Disposable {
         void dispose() { composer.dispose(); if (inlay.isValid()) inlay.dispose(); }
     }
     private final Map<String, ThreadView> discussions=new LinkedHashMap<>();
-    private static final class ThreadView { final ThreadCard card;final Inlay<?> inlay;ThreadView(ThreadCard card,Inlay<?> inlay){this.card=card;this.inlay=inlay;} }
+    private static final class ThreadView {
+        final ThreadCard card; final Inlay<?> inlay;
+        ThreadView(ThreadCard card, Inlay<?> inlay) { this.card=card; this.inlay=inlay; }
+        void dispose() { card.closeExpandedView(false); if(inlay.isValid())inlay.dispose(); }
+    }
     private final Map<String, Integer> priorities = new HashMap<>();
     private int nextPriority = 100000;
     private static final class EditorDraft {
@@ -132,7 +136,7 @@ final class ReviewEditorSession implements Disposable {
                 inlineNotes.values().forEach(Inlay::update);
                 creations.values().forEach(view -> view.composer.setEditorWidth(composerWidth(), () -> { if (view.inlay.isValid()) WriteIntentReadAction.run(view.inlay::update); }));
                 editing.values().forEach(draft -> draft.form.setEditorWidth(composerWidth(), () -> { if (draft.inlay != null && draft.inlay.isValid()) WriteIntentReadAction.run(draft.inlay::update); }));
-                discussions.values().forEach(view->view.card.setEditorWidth(threadWidth(),view.inlay::update));
+                discussions.values().forEach(view->view.card.setEditorWidth(threadWidth(),()->{if(view.inlay.isValid())view.inlay.update();}));
             }
         };
         editor.addEditorMouseMotionListener(mouseListener);
@@ -178,14 +182,17 @@ final class ReviewEditorSession implements Disposable {
                 var painted=inlineNotes.remove(note.id);if(painted!=null)painted.dispose();
                 var old=discussions.get(note.id);
                 if(old==null||!old.inlay.isValid()){
+                    if(old!=null)old.dispose();
                     ThreadCard card=new ThreadCard(service,discussion);card.setEditorWidth(threadWidth(),()->{});
+                    JPanel slot=new JPanel(new java.awt.BorderLayout());slot.setOpaque(false);slot.add(card);
+                    card.enableEditorExpansion(editor.getComponent(),slot);
                     int end=Math.max(0,Math.min(note.endLine-1,editor.getDocument().getLineCount()-1));
-                    var inlay=EditorEmbeddedComponentManager.getInstance().addComponent(ex,card,new EditorEmbeddedComponentManager.Properties(EditorEmbeddedComponentManager.ResizePolicy.none(),null,true,false,priority(note.id),editor.getDocument().getLineEndOffset(end)));
-                    if(inlay!=null){discussions.put(note.id,new ThreadView(card,inlay));card.setEditorWidth(threadWidth(),inlay::update);}
+                    var inlay=EditorEmbeddedComponentManager.getInstance().addComponent(ex,slot,new EditorEmbeddedComponentManager.Properties(EditorEmbeddedComponentManager.ResizePolicy.none(),null,true,false,priority(note.id),editor.getDocument().getLineEndOffset(end)));
+                    if(inlay!=null){discussions.put(note.id,new ThreadView(card,inlay));card.setEditorWidth(threadWidth(),()->{if(inlay.isValid())inlay.update();});}
                 }else old.card.update(discussion);
                 continue;
             }
-            var open=discussions.remove(note.id);if(open!=null)open.inlay.dispose();
+            var open=discussions.remove(note.id);if(open!=null)open.dispose();
             EditorDraft draft = editing.get(note.id);
             if (draft != null) {
                 if (draft.inlay == null || !draft.inlay.isValid()) embed(draft, note);
@@ -202,7 +209,7 @@ final class ReviewEditorSession implements Disposable {
                 if (inlay != null) inlineNotes.put(note.id, inlay);
             }
         }
-        discussions.entrySet().removeIf(e->{if(liveIds.contains(e.getKey()))return false;e.getValue().inlay.dispose();return true;});
+        discussions.entrySet().removeIf(e->{if(liveIds.contains(e.getKey()))return false;e.getValue().dispose();return true;});
         inlineNotes.entrySet().removeIf(entry -> {
             if (liveIds.contains(entry.getKey())) return false;
             entry.getValue().dispose(); return true;
@@ -363,7 +370,7 @@ final class ReviewEditorSession implements Disposable {
         }
         notes.clear();
         inlineNotes.values().forEach(Inlay::dispose); inlineNotes.clear();
-        discussions.values().forEach(v->v.inlay.dispose());discussions.clear();
+        discussions.values().forEach(ThreadView::dispose);discussions.clear();
         creations.values().forEach(CreationView::dispose); creations.clear();
         priorities.clear();
     }
