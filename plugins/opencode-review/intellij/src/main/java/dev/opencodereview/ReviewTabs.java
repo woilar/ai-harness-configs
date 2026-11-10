@@ -27,6 +27,11 @@ final class ReviewTabs extends JPanel {
     void addTab(String title,JComponent content){
         int index=buttons.size();String key=Integer.toString(index);
         var button=new JToggleButton(title){
+            @Override public Dimension getPreferredSize(){
+                Dimension size=super.getPreferredSize();
+                if(getClientProperty("unread") instanceof Long n&&n>0)size.width+=badgeWidth(n)+JBUI.scale(4);
+                return size;
+            }
             private final HoverFeedback hover=new HoverFeedback(this);
             @Override public void removeNotify(){hover.reset();super.removeNotify();}
             @Override protected void paintComponent(Graphics graphics){
@@ -36,7 +41,14 @@ final class ReviewTabs extends JPanel {
                     g.setFont(getFont());
                     g.setColor(!isEnabled()?ReviewUi.muted():isSelected()?com.intellij.ui.JBColor.namedColor("OpenCodeReview.selectedTabForeground",new com.intellij.ui.JBColor(0x2457A7,0xC6DAFF)):com.intellij.ui.JBColor.foreground());
                     var fm=g.getFontMetrics();int pad=JBUI.scale(8);
-                    g.drawString(ThreadOverview.elide(fm,getText(),Math.max(0,getWidth()-pad*2)),pad,(getHeight()-fm.getHeight())/2+fm.getAscent());
+                    long unread=getClientProperty("unread") instanceof Long n?n:0;
+                    int badge=unread>0?Math.min(badgeWidth(unread),Math.max(0,getWidth()-pad)):0;
+                    g.drawString(ThreadOverview.elide(fm,getText(),Math.max(0,getWidth()-pad*2-badge)),pad,(getHeight()-fm.getHeight())/2+fm.getAscent());
+                    if(badge>0){
+                        int h=JBUI.scale(18),x=getWidth()-pad-badge,y=(getHeight()-h)/2;
+                        g.setColor(ReviewUi.accent());g.fillRoundRect(x,y,badge,h,h,h);g.setColor(Color.WHITE);
+                        String count=Long.toString(unread);g.drawString(count,x+(badge-fm.stringWidth(count))/2,(getHeight()-fm.getHeight())/2+fm.getAscent());
+                    }
                 }finally{g.dispose();}
             }
         };
@@ -51,7 +63,13 @@ final class ReviewTabs extends JPanel {
         group.add(button);buttons.add(button);strip.add(button);pages.add(content,key);
         if(index==0)select(0);
     }
-    private void select(int index){buttons.get(index).setSelected(true);((CardLayout)pages.getLayout()).show(pages,Integer.toString(index));}
+    void select(int index){buttons.get(index).setSelected(true);((CardLayout)pages.getLayout()).show(pages,Integer.toString(index));}
     void setTitleAt(int index,String text){buttons.get(index).setText(text);}
+    private static int badgeWidth(long count){return JBUI.scale(count<10?20:count<100?28:36);}
+    void setUnreadAt(int index,long count){
+        var button=buttons.get(index);button.putClientProperty("unread",count);
+        button.getAccessibleContext().setAccessibleName(button.getText()+" · Непрочитанных обсуждений: "+count);
+        button.revalidate();strip.revalidate();button.repaint();
+    }
     void setToolTipTextAt(int index,String text){buttons.get(index).setToolTipText(text);}
 }

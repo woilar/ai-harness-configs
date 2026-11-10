@@ -21,6 +21,7 @@ final class ReviewPanel extends JPanel implements Disposable {
     private final com.intellij.util.ui.ThreeStateCheckBox selectAll=new com.intellij.util.ui.ThreeStateCheckBox();
     private final JPanel cards=new JPanel();
     private final ThreadOverview overview;
+    private final JButton unreadNotice=new JButton();
     private final JButton trash=HoverFeedback.button("",ReviewUi.archiveIcon()), undo=new JButton("Отменить");
 
     private final ReviewTabs tabs=new ReviewTabs(trash);
@@ -50,7 +51,12 @@ final class ReviewPanel extends JPanel implements Disposable {
         ReviewUi.quiet(focus);focus.setMargin(JBUI.emptyInsets());focus.setPreferredSize(JBUI.size(26,26));
         focus.getAccessibleContext().setAccessibleName("К терминалу OpenCode");focus.setToolTipText("Перейти в последний активный терминал OpenCode");focus.addActionListener(e->tracker.focus());
         connection.setForeground(ReviewUi.muted());connection.setIconTextGap(JBUI.scale(5));
-        top.add(destination,BorderLayout.NORTH);
+        JPanel queueHeader=new JPanel(new BorderLayout(0,JBUI.scale(6)));
+        queueHeader.add(unreadNotice,BorderLayout.NORTH);queueHeader.add(destination,BorderLayout.CENTER);
+        top.add(queueHeader,BorderLayout.NORTH);
+        unreadNotice.setHorizontalAlignment(SwingConstants.LEFT);unreadNotice.setForeground(ReviewUi.accent());
+        unreadNotice.setToolTipText("Показать обсуждения с непрочитанными ответами");
+        unreadNotice.addActionListener(e->{overviewUnread();});
         ReviewUi.quiet(trash);trash.setToolTipText("Три последних удалённых комментария");trash.addActionListener(e->showTrash());
         trash.setMargin(JBUI.insets(4,6));
         ReviewUi.quiet(undo);undo.setForeground(ReviewUi.accent());
@@ -71,7 +77,7 @@ final class ReviewPanel extends JPanel implements Disposable {
         JScrollPane scroll=new JScrollPane(cards);scroll.setBorder(JBUI.Borders.empty());scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);scroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);scroll.getVerticalScrollBar().setUnitIncrement(16);
         overview=new ThreadOverview(id->WriteIntentReadAction.run(()->{
             var note=service.activateThread(id);if(note!=null)service.navigate(note);
-        }),service::confirmDeleteThread,this::threadChangesMenu);
+        }),(id,archived)->WriteIntentReadAction.run(()->service.setThreadArchived(id,archived)),this::threadChangesMenu);
         JPanel queuePage=new JPanel(new BorderLayout(0,JBUI.scale(8)));queuePage.add(top,BorderLayout.NORTH);queuePage.add(scroll,BorderLayout.CENTER);
         tabs.addTab("Комментарии",queuePage);tabs.addTab("Обсуждения",overview);add(tabs,BorderLayout.CENTER);
         message.setFont(recipient.getFont());message.setForeground(ReviewUi.muted());message.setVisible(false);
@@ -118,8 +124,14 @@ final class ReviewPanel extends JPanel implements Disposable {
             cards.revalidate();cards.repaint();
         }
         for(Component component:cards.getComponents())if(component instanceof Card card){card.include.setEnabled(!busy&&!pending);card.close.setEnabled(!busy&&!pending);}
-        var threads=service.threads();overview.update(threads,service.selectedThreadID());overview.setDeletionEnabled(!busy&&service.pending()==null);long unread=threads.stream().filter(ReviewThread::hasUnreadAnswer).count();tabs.setTitleAt(1,"Обсуждения"+(unread>0?" · "+unread:""));tabs.setToolTipTextAt(1,"Непрочитанные ответы: "+unread+" · Всего обсуждений: "+threads.size());
+        var threads=service.threads();overview.update(threads,service.selectedThreadID());
+        long active=ReviewThread.activeCount(threads),unread=ReviewThread.unreadCount(threads);
+        tabs.setTitleAt(1,"Обсуждения · "+active);tabs.setUnreadAt(1,unread);
+        tabs.setToolTipTextAt(1,"Активные обсуждения: "+active+" · С непрочитанными ответами: "+unread);
+        unreadNotice.setVisible(unread>0);
+        unreadNotice.setText("● Новые ответы в обсуждениях: "+unread+"   Читать →");
     }
+    private void overviewUnread(){overview.showUnread();tabs.select(1);}
     private void confirmDeleteSelected(){
         if(busy||service.pending()!=null)return;
         var notes=service.snapshot().stream().filter(n->n.included).toList();if(notes.isEmpty())return;
@@ -167,7 +179,10 @@ final class ReviewPanel extends JPanel implements Disposable {
         var action=new com.intellij.openapi.actionSystem.AnAction("Показать изменения","Сравнить исходный снимок с текущим файлом",null){
             @Override public void actionPerformed(com.intellij.openapi.actionSystem.AnActionEvent e){WriteIntentReadAction.run(()->service.showThreadChanges(id));}
         };
-        com.intellij.openapi.ui.popup.JBPopupFactory.getInstance().createActionGroupPopup(null,new com.intellij.openapi.actionSystem.DefaultActionGroup(action),com.intellij.openapi.actionSystem.DataContext.EMPTY_CONTEXT,com.intellij.openapi.ui.popup.JBPopupFactory.ActionSelectionAid.SPEEDSEARCH,true).showInCenterOf(overview);
+        var delete=new com.intellij.openapi.actionSystem.AnAction("Удалить обсуждение…"){
+            @Override public void actionPerformed(com.intellij.openapi.actionSystem.AnActionEvent e){service.confirmDeleteThread(id);}
+        };
+        com.intellij.openapi.ui.popup.JBPopupFactory.getInstance().createActionGroupPopup(null,new com.intellij.openapi.actionSystem.DefaultActionGroup(action,delete),com.intellij.openapi.actionSystem.DataContext.EMPTY_CONTEXT,com.intellij.openapi.ui.popup.JBPopupFactory.ActionSelectionAid.SPEEDSEARCH,true).showInCenterOf(overview);
     }
     static String sendLabel(long count){
         return count==0 ? "Отправить" : "↑ Отправить";
