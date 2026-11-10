@@ -10,7 +10,8 @@ public final class ReviewToolWindowFactory implements ToolWindowFactory, DumbAwa
         content.setDisposer(panel); window.getContentManager().addContent(content);
     }
     static void refreshIndicator(Project project,java.util.List<ReviewThread> threads){
-        var manager=ToolWindowManager.getInstance(project);if(manager==null)return;
+        // Core/headless projects have no window manager. getInstance() asserts service presence.
+        var manager=project.getService(ToolWindowManager.class);if(manager==null)return;
         var window=manager.getToolWindow("OpenCode Review");
         if(window!=null)window.setIcon(new DiscussionIcon(ReviewThread.unreadCount(threads)>0));
     }
