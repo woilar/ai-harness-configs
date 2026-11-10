@@ -453,6 +453,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
         if (invalid != null) return invalid;
         boolean found = false;
         synchronized (this) {
+            if(state.pending!=null)return "Дождись подтверждения отправки перед редактированием.";
             for (ReviewComment note : state.comments) if (note.id.equals(id)) { note.comment = text.strip(); found = true; break; }
         }
         if (!found) return "Комментарий уже удалён.";

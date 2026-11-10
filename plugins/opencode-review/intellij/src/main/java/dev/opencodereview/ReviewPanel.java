@@ -28,6 +28,28 @@ final class ReviewPanel extends JPanel implements Disposable {
     private final JButton deleteSelected=HoverFeedback.button("",ReviewUi.selectedDeleteIcon());
     private final JPanel undoRow=new JPanel(new BorderLayout(8,0));
     private String selectedID;
+    private final Map<String,CommentEditorForm> queuedEditors=new LinkedHashMap<>();
+    private void editQueuedComment(ReviewComment requested){
+        if(navigation!=null)navigation.stop();
+        if(busy||service.pending()!=null){feedback("Дождись подтверждения отправки перед редактированием.");return;}
+        var existing=queuedEditors.get(requested.id);if(existing!=null){existing.focusInput();return;}
+        var note=service.snapshot().stream().filter(n->n.id.equals(requested.id)).findFirst().orElse(null);
+        if(note==null)return;
+        var form=new CommentEditorForm(note.shortLocation(),note.comment,true,text->
+            WriteIntentReadAction.compute(()->{
+                String problem=service.updateComment(note.id,text);
+                if(problem==null)finishQueuedEdit(note.id);
+                return problem;
+            }),()->finishQueuedEdit(note.id));
+        form.setAlignmentX(Component.LEFT_ALIGNMENT);
+        // Register first: another editor of this same queue item must keep ownership.
+        if(!service.beginAutoEditing(note.id,form::focusInput,form::save))return;
+        queuedEditors.put(note.id,form);rendered="";refresh();form.focusInput();
+    }
+    private void finishQueuedEdit(String id){
+        if(queuedEditors.remove(id)==null)return;
+        rendered="";service.endEditing(id);if(!disposed)refresh();
+    }
     private javax.swing.Timer navigation;
 
     private record CachedContext(String path,String source,String code,CommentContext.Preview preview) {}
@@ -95,7 +117,9 @@ final class ReviewPanel extends JPanel implements Disposable {
         trash.setText("");trash.setToolTipText("Удалённые комментарии · "+service.trash().size()+" (хранятся 3 последних)");trash.getAccessibleContext().setAccessibleName("Корзина · "+service.trash().size());
         undoRow.setVisible(service.lastDeletedID()!=null);
         undo.setEnabled(!busy&&service.pending()==null);
-        List<ReviewComment> notes=service.snapshot();contextCache.keySet().retainAll(notes.stream().map(n->n.id).toList());long selected=notes.stream().filter(n->n.included).count();
+        List<ReviewComment> notes=service.snapshot();
+        for(String id:List.copyOf(queuedEditors.keySet()))if(notes.stream().noneMatch(n->n.id.equals(id)))finishQueuedEdit(id);
+        contextCache.keySet().retainAll(notes.stream().map(n->n.id).toList());long selected=notes.stream().filter(n->n.included).count();
         selectAll.setText(selected==0?"Все":"Выбрано "+selected);
         count.setText(selected+" из "+notes.size()+" выбрано");count.setToolTipText("Выбрано комментариев: "+selected+" из "+notes.size());
         count.getAccessibleContext().setAccessibleName("Выбрано: "+selected+" из "+notes.size());
@@ -120,7 +144,21 @@ final class ReviewPanel extends JPanel implements Disposable {
                 JLabel empty=new JLabel("<html><b>Комментариев пока нет</b><br><br>Добавь комментарий к коду<br>или ответь в обсуждении.</html>");
                 empty.setBorder(JBUI.Borders.empty(8,0));cards.add(empty);
             }
-            int ordinal=0;for(ReviewComment note:notes) {cards.add(new Card(note,++ordinal));cards.add(Box.createVerticalStrut(JBUI.scale(8)));}
+            int ordinal=0;for(ReviewComment note:notes) {++ordinal;var form=queuedEditors.get(note.id);
+                if(form==null)cards.add(new Card(note,ordinal));
+                else{
+                    JPanel host=new JPanel(new BorderLayout()){
+                        private int measuredWidth;
+                        @Override public Dimension getMaximumSize(){return new Dimension(Integer.MAX_VALUE,getPreferredSize().height);}
+                        @Override public void doLayout(){
+                            if(getWidth()>0&&measuredWidth!=getWidth()){
+                                measuredWidth=getWidth();form.setEditorWidth(measuredWidth,()->cards.revalidate());
+                            }
+                            super.doLayout();
+                        }
+                    };
+                    host.setOpaque(false);host.setAlignmentX(Component.LEFT_ALIGNMENT);host.add(form);cards.add(host);
+                }cards.add(Box.createVerticalStrut(JBUI.scale(8)));}
             cards.revalidate();cards.repaint();
         }
         for(Component component:cards.getComponents())if(component instanceof Card card){card.include.setEnabled(!busy&&!pending);card.close.setEnabled(!busy&&!pending);}
@@ -130,6 +168,10 @@ final class ReviewPanel extends JPanel implements Disposable {
         tabs.setToolTipTextAt(1,"Активные обсуждения: "+active+" · С непрочитанными ответами: "+unread);
         unreadNotice.setVisible(unread>0);
         unreadNotice.setText("● Новые ответы в обсуждениях: "+unread+"   Читать →");
+    }
+    private static int doubleClickInterval(){
+        Object value=Toolkit.getDefaultToolkit().getDesktopProperty("awt.multiClickInterval");
+        return value instanceof Integer interval&&interval>0?interval:500;
     }
     private void overviewUnread(){overview.showUnread();tabs.select(1);}
     private void confirmDeleteSelected(){
@@ -270,9 +312,9 @@ final class ReviewPanel extends JPanel implements Disposable {
                 @Override public void mouseClicked(MouseEvent e){
                     if(!SwingUtilities.isLeftMouseButton(e))return;select(note);
                     if(navigation!=null)navigation.stop();
-                    if(e.getClickCount()==2)WriteIntentReadAction.run(()->service.edit(note));
+                    if(e.getClickCount()==2)WriteIntentReadAction.run(()->editQueuedComment(note));
                     else if(e.getClickCount()==1){
-                        navigation=new javax.swing.Timer(250,event->{if(!disposed&&service.snapshot().stream().anyMatch(n->n.id.equals(note.id)))WriteIntentReadAction.run(()->service.navigate(note));});
+                        navigation=new javax.swing.Timer(doubleClickInterval(),event->{if(!disposed&&service.snapshot().stream().anyMatch(n->n.id.equals(note.id)))WriteIntentReadAction.run(()->service.navigate(note));});
                         navigation.setRepeats(false);navigation.start();
                     }
                 }
@@ -280,7 +322,7 @@ final class ReviewPanel extends JPanel implements Disposable {
             getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke("ENTER"),"navigate");
             getActionMap().put("navigate",new AbstractAction(){@Override public void actionPerformed(ActionEvent e){select(note);WriteIntentReadAction.run(()->service.navigate(note));}});
             getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke("F2"),"edit");
-            getActionMap().put("edit",new AbstractAction(){@Override public void actionPerformed(ActionEvent e){WriteIntentReadAction.run(()->service.edit(note));}});
+            getActionMap().put("edit",new AbstractAction(){@Override public void actionPerformed(ActionEvent e){WriteIntentReadAction.run(()->editQueuedComment(note));}});
         }
         private int bodyHeight(int width){return getFontMetrics(CommentCardPainter.font()).getHeight()*CommentCardPainter.lines(getFontMetrics(CommentCardPainter.font()),note.comment,width-JBUI.scale(24)).size();}
         private int contextHeight(){return (context.symbol().isEmpty()?0:getFontMetrics(CommentCardPainter.font()).getHeight()+JBUI.scale(5))+getFontMetrics(CommentCardPainter.font()).getHeight()*context.lines().size()+JBUI.scale(18);}
@@ -322,5 +364,10 @@ final class ReviewPanel extends JPanel implements Disposable {
         @Override public boolean getScrollableTracksViewportWidth(){return true;}
         @Override public boolean getScrollableTracksViewportHeight(){return false;}
     }
-    @Override public void dispose(){disposed=true;contextCache.clear();if(navigation!=null)navigation.stop();service.highlight(null);}
+    @Override public void dispose(){
+        disposed=true;if(navigation!=null)navigation.stop();
+        if(!project.isDisposed())for(var form:List.copyOf(queuedEditors.values()))WriteIntentReadAction.run(form::save);
+        for(String id:List.copyOf(queuedEditors.keySet()))finishQueuedEdit(id);
+        contextCache.clear();service.highlight(null);
+    }
 }
