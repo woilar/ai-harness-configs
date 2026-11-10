@@ -8,6 +8,10 @@ public final class ReviewThread {
     public ReviewComment root=new ReviewComment();
     public ArrayList<Turn> turns=new ArrayList<>();
     public boolean resolved,expanded,running,online;
+    /** Completed locally, with transcript retained. Separate from legacy resolved/deleted state. */
+    public boolean archived;
+    static long activeCount(java.util.List<ReviewThread> threads){return threads.stream().filter(t->!t.archived).count();}
+    static long unreadCount(java.util.List<ReviewThread> threads){return threads.stream().filter(t->!t.archived&&t.hasUnreadAnswer()).count();}
     public static final class Turn {
         public String id="",text="",answer="",answerID="",sessionID="",directory="";
         public String answerUtf8="";
@@ -18,7 +22,7 @@ public final class ReviewThread {
     }
     public ReviewThread(){}
     ReviewThread(ReviewThread other){id=other.id;sessionID=other.sessionID;directory=other.directory;title=other.title;registryFile=other.registryFile;replyDraft=other.replyDraft;
-        root=new ReviewComment(other.root);online=other.online;running=other.running;resolved=other.resolved;expanded=other.expanded;for(var turn:other.turns){var copy=new Turn(turn);if(copy.sessionID.isEmpty())copy.sessionID=other.sessionID;if(copy.directory.isEmpty())copy.directory=other.directory;turns.add(copy);}}
+        root=new ReviewComment(other.root);archived=other.archived;online=other.online;running=other.running;resolved=other.resolved;expanded=other.expanded;for(var turn:other.turns){var copy=new Turn(turn);if(copy.sessionID.isEmpty())copy.sessionID=other.sessionID;if(copy.directory.isEmpty())copy.directory=other.directory;turns.add(copy);}}
     boolean hasUnreadAnswer(){return turns.stream().anyMatch(t->!t.answer.isEmpty()&&t.readAnswerHash!=null&&!BridgeClient.hash(t.answer).equals(t.readAnswerHash));}
     String status(){if(resolved)return "Решено";if(turns.isEmpty())return "Черновик";var last=turns.getLast();return !last.answer.isEmpty()?"Есть ответ":last.admitted?(!online?"Нет связи с OpenCode":last.completed?"Ответ не привязан к треду":running?"Отвечает…":"Ожидает ответа"):"В черновике OpenCode";}
     int messageCount(){return turns.size()+(int)turns.stream().filter(t->!t.answer.isEmpty()).count();}

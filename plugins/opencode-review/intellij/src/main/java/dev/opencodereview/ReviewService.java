@@ -219,6 +219,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
                 }
             });
         for (Editor editor : factory.getAllEditors()) attach(editor);
+        notifyListeners();
     }
 
     void attach(Editor editor) {
@@ -562,7 +563,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
     private List<ReviewComment> anchoredNotes(){var notes=new ArrayList<>(state.comments);notes.addAll(state.creationDrafts);for(var t:state.threads)notes.add(t.root);return notes;}
     List<ReviewComment> displayComments(){
         var notes=new ArrayList<ReviewComment>();for(var n:snapshot())if(n.threadID.isEmpty()&&thread(n.id)==null)notes.add(n);
-        for(var t:threads())if(!t.resolved||t.expanded)notes.add(t.card());return notes;
+        for(var t:threads())if((!t.resolved&&!t.archived)||t.expanded)notes.add(t.card());return notes;
     }
     void showThreadChanges(String id){
         var t=thread(id);if(t==null)return;var n=new ReviewComment(t.root);
@@ -589,6 +590,16 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
         changed();return note;
     }
     void toggleThread(String id){synchronized(this){for(var t:state.threads)if(t.id.equals(id)){t.expanded=!t.expanded;selectedThreadID=id;}}changed();}
+    /** Archive is reversible and never deletes drafts, queued replies, or read markers. */
+    void setThreadArchived(String id,boolean archived){
+        synchronized(this){
+            var thread=state.threads.stream().filter(t->t.id.equals(id)).findFirst().orElse(null);
+            if(thread==null||thread.archived==archived)return;
+            thread.archived=archived;
+            if(archived){thread.expanded=false;if(Objects.equals(selectedThreadID,id))selectedThreadID=null;}
+        }
+        changed();
+    }
     void confirmDeleteThread(String id){
         if(pending()!=null){error("Дождись подтверждения отправки перед удалением обсуждения.");return;}
         if(thread(id)==null)return;
@@ -623,7 +634,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
                 return "Комментарии и снимки кода превысили 10 МБ.";
             var n=new ReviewComment(t.root);n.id=UUID.randomUUID().toString();n.threadID=t.id;n.boundSessionID="";n.boundDirectory="";
             n.replyContext="";if(!t.turns.isEmpty()){var last=t.turns.getLast();n.replyContext="Вы: "+last.text+"\nOpenCode: "+last.answer;if(n.replyContext.length()>12000)n.replyContext=n.replyContext.substring(0,12000)+"…";}
-            n.comment=t.replyDraft.strip();n.included=true;state.comments.add(n);t.replyDraft="";t.resolved=false;
+            n.comment=t.replyDraft.strip();n.included=true;state.comments.add(n);t.replyDraft="";t.resolved=false;t.archived=false;
         }changed();return null;
     }
     String validateThreadBatch(List<ReviewComment> notes,String sessionID,String directory){
@@ -641,7 +652,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
                 t.sessionID=transfer.sessionID;t.directory=transfer.directory;t.title=transfer.title;state.threads.add(t);}
             t.sessionID=transfer.sessionID;t.directory=transfer.directory;t.title=transfer.title;t.registryFile=transfer.registryFile;
             if(t.turns.stream().noneMatch(x->x.id.equals(note.id))){var turn=new ReviewThread.Turn();turn.id=note.id;turn.text=note.comment;turn.sessionID=transfer.sessionID;turn.directory=transfer.directory;turn.admitted=transfer.submit;t.turns.add(turn);}
-            t.resolved=false;
+            t.resolved=false;t.archived=false;
         }}
         for(var entry:List.copyOf(locations.entrySet()))if(!entry.getKey().isDisposed())restoreAnchors(entry.getKey().getDocument(),entry.getValue());
         changed();
@@ -673,7 +684,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
                 if(answer.length()>20000)continue;
                 boolean completed=u.has("completed")&&u.get("completed").getAsBoolean();if(completed&&!turn.completed){turn.completed=true;modified=true;}
                 if(admitted&&!turn.admitted){turn.admitted=true;modified=true;}
-                if(!answer.isEmpty()&&!answer.equals(turn.answer)){if(turn.readAnswerHash==null)turn.readAnswerHash=BridgeClient.hash(turn.answer);turn.answer=answer;turn.answerID=BridgeClient.string(u,"answerID");modified=true;}
+                if(!answer.isEmpty()&&!answer.equals(turn.answer)){if(turn.readAnswerHash==null)turn.readAnswerHash=BridgeClient.hash(turn.answer);t.archived=false;turn.answer=answer;turn.answerID=BridgeClient.string(u,"answerID");modified=true;}
             }
         }}if(modified)changed();
     }
@@ -688,7 +699,10 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
         notifyListeners();
     }
     private void notifyListeners() {
-        if (!project.isDisposed()) for (Runnable listener : List.copyOf(listeners)) listener.run();
+        if (!project.isDisposed()) {
+            if(ApplicationManager.getApplication()!=null)ReviewToolWindowFactory.refreshIndicator(project,threads());
+            for (Runnable listener : List.copyOf(listeners)) listener.run();
+        }
     }
     private void error(String message) { Messages.showWarningDialog(project, message, "OpenCode Review"); }
     @Override public void dispose() {
