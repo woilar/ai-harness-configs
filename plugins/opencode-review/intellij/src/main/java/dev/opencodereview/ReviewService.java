@@ -31,13 +31,13 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
     }
     private final Project project;
     private QueueState state = new QueueState();
-    private final Map<String, RangeMarker> anchors = new HashMap<>();
+    private final Map<String, ReviewAnchor> anchors = new HashMap<>();
     private final Map<Editor, ReviewEditorSession> editors = new IdentityHashMap<>();
     private final List<Runnable> listeners = new ArrayList<>();
     private final Map<String, Runnable> openInputs = new HashMap<>();
     private final Map<String, BooleanSupplier> autosaves = new HashMap<>();
     private String lastDeletedID;
-    private boolean started;
+    private boolean started,disposed,anchorRefreshQueued;
     private TerminalTracker tracker;
     TerminalTracker tracker() { if (tracker == null) { tracker = new TerminalTracker(project, this::notifyListeners); Disposer.register(this, tracker); } return tracker; }
 
@@ -66,6 +66,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
         return copy;
     }
     @Override public synchronized void loadState(QueueState loaded) {
+        anchors.values().forEach(ReviewAnchor::dispose);anchors.clear();
         state = new QueueState();selectedThreadID=null;lastDeletedID=null;
         state.pending = loaded.pending;
         if(loaded.removedThreadIDs!=null)for(String id:loaded.removedThreadIDs)if(id!=null&&!id.isBlank()&&!state.removedThreadIDs.contains(id))state.removedThreadIDs.add(id);
@@ -191,15 +192,39 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
                 ReviewEditorSession session = editors.remove(event.getEditor());
                 if (session != null) Disposer.dispose(session);
                 locations.remove(event.getEditor());
+                releaseAnchors(event.getEditor().getDocument());
             }
         }, this);
+        project.getMessageBus().connect(this).subscribe(com.intellij.openapi.vfs.VirtualFileManager.VFS_CHANGES,
+            new com.intellij.openapi.vfs.newvfs.BulkFileListener(){
+                @Override public void after(List<? extends com.intellij.openapi.vfs.newvfs.events.VFileEvent> events){
+                    synchronized(ReviewService.this){
+                        if(anchorRefreshQueued||anchoredNotes().stream().noneMatch(note->"WORKTREE".equals(note.side)
+                            &&events.stream().anyMatch(event->note.filePath.equals(event.getPath())||note.filePath.startsWith(event.getPath()+"/"))))return;
+                        anchorRefreshQueued=true;
+                    }
+                    // Reload/delete callbacks may precede document and editor lifecycle notifications.
+                    // Reconcile after this VFS event batch, using only live documents and locations.
+                    ApplicationManager.getApplication().invokeLater(()->{
+                        synchronized(ReviewService.this){anchorRefreshQueued=false;}
+                        if(project.isDisposed()||disposed)return;
+                        com.intellij.openapi.application.WriteIntentReadAction.run(()->{
+                            synchronized(ReviewService.this){pruneInvalidAnchors();}
+                            for(var entry:List.copyOf(locations.entrySet()))
+                                if(!entry.getKey().isDisposed()&&"WORKTREE".equals(entry.getValue().side()))
+                                    restoreAnchors(entry.getKey().getDocument(),entry.getValue());
+                            changed();
+                        });
+                    });
+                }
+            });
         for (Editor editor : factory.getAllEditors()) attach(editor);
     }
 
     void attach(Editor editor) {
         if (editor.getProject() != project || editors.containsKey(editor)) return;
         var file = FileDocumentManager.getInstance().getFile(editor.getDocument());
-        if (file == null || !file.isInLocalFileSystem()) return;
+        if (file == null || !file.isValid() || !file.isInLocalFileSystem()) return;
         attachAt(editor, ReviewLocation.working(file.getPath()));
     }
 
@@ -215,40 +240,68 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
         editors.put(editor, session); Disposer.register(this, session);
     }
 
+    private static boolean liveDocument(Document document,ReviewLocation location) {
+        if(ApplicationManager.getApplication()==null)return true;
+        var file=FileDocumentManager.getInstance().getFile(document);
+        // An unbound WORKTREE document can be the orphan of a deleted file. Only diff snapshots
+        // may be rebound without a VirtualFile; matching text alone does not establish ownership.
+        if(file==null)return location!=null&&!"WORKTREE".equals(location.side());
+        return file.isValid()&&(location==null||!"WORKTREE".equals(location.side())||file.getPath().equals(location.path()));
+    }
+
     private void restoreAnchors(Document document, ReviewLocation location) {
-        String source = document.getText();
-        synchronized (this) {
-            for (ReviewComment note : anchoredNotes()) {
-                if (!location.matches(note)) continue;
-                RangeMarker existing = anchors.get(note.id);
-                if (existing != null && existing.isValid() && existing.getDocument() == document) continue;
-                if (existing != null) existing.dispose();
-                int start = Math.max(0, Math.min(note.startOffset, source.length()));
-                int end = Math.max(start, Math.min(note.endOffset, source.length()));
-                if (!source.substring(start, end).equals(note.code) && !note.code.isEmpty()) {
-                    int match = source.indexOf(note.code);
-                    if (match >= 0 && source.indexOf(note.code, match + 1) < 0) {
-                        start = match; end = match + note.code.length();
-                    }
-                }
-                RangeMarker marker = document.createRangeMarker(start, end);
-                anchors.put(note.id, marker);
+        synchronized(this){
+            pruneInvalidAnchors();
+            if(!liveDocument(document,location))return;
+            for(ReviewComment note:anchoredNotes()){
+                if(!location.matches(note))continue;
+                ReviewAnchor existing=anchors.get(note.id);
+                if(existing!=null&&existing.isValid()&&existing.document()==document)continue;
+                if(existing!=null){existing.dispose();anchors.remove(note.id);}
+                ReviewAnchor anchor=ReviewAnchor.restore(document,note,existing==null&&!note.changed);
+                if(anchor!=null)anchors.put(note.id,anchor);
             }
         }
         documentChanged(document);
     }
 
+    private void pruneInvalidAnchors(){
+        for(ReviewComment note:anchoredNotes()){
+            ReviewAnchor anchor=anchors.get(note.id);
+            if(anchor!=null&&!anchor.isValid()){
+                note.changed=true;anchors.remove(note.id);anchor.dispose();
+            }
+        }
+    }
+
+    private void releaseAnchors(Document document){
+        if(editors.keySet().stream().anyMatch(editor->!editor.isDisposed()&&editor.getDocument()==document))return;
+        synchronized(this){
+            pruneInvalidAnchors();
+            anchors.entrySet().removeIf(entry->{
+                if(entry.getValue().document()!=document)return false;
+                entry.getValue().dispose();return true;
+            });
+        }
+    }
+
     public void documentChanged(Document document) {
-        synchronized (this) {
-            for (ReviewComment note : anchoredNotes()) {
-                RangeMarker marker = anchors.get(note.id);
-                if (marker == null || marker.getDocument() != document) continue;
-                if (!marker.isValid()) { note.changed = true; continue; }
-                note.startOffset = marker.getStartOffset(); note.endOffset = marker.getEndOffset();
-                note.startLine = document.getLineNumber(note.startOffset) + 1;
-                note.endLine = document.getLineNumber(Math.max(note.startOffset, note.endOffset - 1)) + 1;
-                String actual = document.getCharsSequence().subSequence(note.startOffset, note.endOffset).toString();
-                note.changed = !actual.equals(note.code);
+        synchronized(this){
+            pruneInvalidAnchors();
+            ReviewLocation location=locations.entrySet().stream()
+                .filter(entry->!entry.getKey().isDisposed()&&entry.getKey().getDocument()==document)
+                .map(Map.Entry::getValue).findFirst().orElse(null);
+            if(!liveDocument(document,location)){changed();return;}
+            for(ReviewComment note:anchoredNotes()){
+                ReviewAnchor anchor=anchors.get(note.id);
+                if(anchor==null){
+                    // Retry unresolved anchors on later edits, but never bind another file or diff side.
+                    boolean owned=locations.entrySet().stream().anyMatch(entry->!entry.getKey().isDisposed()
+                        &&entry.getKey().getDocument()==document&&entry.getValue().matches(note));
+                    if(owned){anchor=ReviewAnchor.restore(document,note,false);if(anchor!=null)anchors.put(note.id,anchor);}
+                }
+                if(anchor==null||anchor.document()!=document)continue;
+                if(!anchor.update(note)){anchors.remove(note.id);anchor.dispose();}
             }
         }
         changed();
@@ -278,7 +331,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
         }
         String problem = createCommentDraft(note);
         if (problem != null) { error(problem); return; }
-        anchors.put(note.id, document.createRangeMarker(note.startOffset, note.endOffset));
+        anchors.put(note.id, new ReviewAnchor(document, document.createRangeMarker(note.startOffset, note.endOffset)));
         changed();
         editors.get(editor).openCreation(note.id);
     }
@@ -317,7 +370,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
     void discardCreationDraft(String id) {
         synchronized (this) {
             if (!state.creationDrafts.removeIf(n -> n.id.equals(id))) return;
-            RangeMarker marker = anchors.remove(id); if (marker != null) marker.dispose();
+            ReviewAnchor marker = anchors.remove(id); if (marker != null) marker.dispose();
         }
         changed();
     }
@@ -388,7 +441,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
                 String previous = note.id;
                 note.threadID = note.discussionID();
                 note.id = UUID.randomUUID().toString();
-                RangeMarker marker = anchors.remove(previous);
+                ReviewAnchor marker = anchors.remove(previous);
                 if (marker != null) anchors.put(note.id, marker);
             }
         }
@@ -433,7 +486,7 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
                 removed.add(note.id); iterator.remove();
             }
             for (String id : removed) {
-                RangeMarker marker = anchors.remove(id); if (marker != null) marker.dispose();
+                ReviewAnchor marker = anchors.remove(id); if (marker != null) marker.dispose();
             }
         }
         changed();
@@ -639,7 +692,8 @@ public final class ReviewService implements PersistentStateComponent<ReviewServi
     }
     private void error(String message) { Messages.showWarningDialog(project, message, "OpenCode Review"); }
     @Override public void dispose() {
-        synchronized (this) { anchors.values().forEach(RangeMarker::dispose); anchors.clear(); }
+        disposed=true;
+        synchronized (this) { anchors.values().forEach(ReviewAnchor::dispose); anchors.clear(); }
         locations.clear(); openInputs.clear(); autosaves.clear(); editors.clear(); listeners.clear();
     }
 }
