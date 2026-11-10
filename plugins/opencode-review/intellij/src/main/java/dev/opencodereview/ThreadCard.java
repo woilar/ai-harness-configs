@@ -7,6 +7,8 @@ import javax.swing.*;
 import javax.swing.event.*;
 import java.awt.*;
 import java.awt.event.KeyEvent;
+import java.awt.event.AWTEventListener;
+import java.awt.event.MouseEvent;
 
 /** Shared expanded discussion in the editor and the tool window. Draft typing never sends. */
 final class ThreadCard extends JPanel {
@@ -24,6 +26,34 @@ final class ThreadCard extends JPanel {
     private final JTextArea replyMeasurement=new JTextArea();
     private final JPanel queueSlot=new JPanel(new BorderLayout());
     private boolean updating;
+    private final AWTEventListener outsideClickListener=this::collapseOnOutsideClick;
+
+    @Override public void addNotify(){
+        super.addNotify();
+        if(editorWidth>0)Toolkit.getDefaultToolkit().addAWTEventListener(outsideClickListener,AWTEvent.MOUSE_EVENT_MASK);
+    }
+    @Override public void removeNotify(){
+        Toolkit.getDefaultToolkit().removeAWTEventListener(outsideClickListener);
+        super.removeNotify();
+    }
+    private void collapseOnOutsideClick(AWTEvent event){
+        if(!(event instanceof MouseEvent mouse)||mouse.getID()!=MouseEvent.MOUSE_PRESSED||!isShowing())return;
+        Component source=mouse.getComponent();
+        // Popup menus belong to their invoker even when Swing puts them in another window.
+        for(Component current=source;current!=null;){
+            if(current==this)return;
+            current=current instanceof JPopupMenu popup?popup.getInvoker():current.getParent();
+        }
+        if(SwingUtilities.getWindowAncestor(source)!=SwingUtilities.getWindowAncestor(this))return;
+        // Let the original click finish; never consume it or change its target mid-dispatch.
+        SwingUtilities.invokeLater(()->{
+            if(!isShowing())return;
+            WriteIntentReadAction.run(()->{
+                ReviewThread thread=service.thread(id);
+                if(thread!=null&&thread.expanded)service.toggleThread(id);
+            });
+        });
+    }
     private static final class ReplyInput extends JTextArea implements KeyboardAwareFocusOwner {
         @Override public boolean skipKeyEventDispatcher(KeyEvent event){return true;}
         @Override protected void paintComponent(Graphics g){super.paintComponent(g);if(getText().isEmpty()){
