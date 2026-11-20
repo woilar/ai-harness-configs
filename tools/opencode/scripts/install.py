@@ -148,7 +148,7 @@ def main():
     if not xdg.is_absolute(): raise ValueError('XDG_CONFIG_HOME должен быть абсолютным путём')
     target = xdg / 'opencode'
     reference_paths = (SOURCE / 'reference-files.txt').read_text().splitlines()
-    for file in ['role-orchestration.md', *reference_paths, 'skills/coach/SKILL.md', 'skills/copilot/SKILL.md', 'skills/executor/SKILL.md']:
+    for file in ['AGENTS.md', *reference_paths, 'skills/coach/SKILL.md', 'skills/copilot/SKILL.md', 'skills/executor/SKILL.md']:
         if not (SOURCE / file).is_file(): raise ValueError('Нет файла фреймворка: ' + str(SOURCE / file))
     configs = [target / 'opencode.json', target / 'opencode.jsonc']
     present = [p for p in configs if p.exists() or p.is_symlink()]
@@ -157,7 +157,7 @@ def main():
     if config.is_symlink(): raise ValueError('Конфиг является ссылкой: изменение отменено')
     old = config.read_text(encoding='utf-8') if present else '{}\n'
     if present and not config.is_file(): raise ValueError('Конфиг не является файлом')
-    instruction = str(SOURCE / 'role-orchestration.md')
+    instruction = str(SOURCE / 'AGENTS.md')
     skills = str(SOURCE / 'skills')
     result = with_entry(with_entry(old, 'instructions', instruction), 'skills', skills)
     parsed_result = parse(result)

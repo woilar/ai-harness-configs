@@ -32,7 +32,7 @@ class InstallTests(unittest.TestCase):
     def assert_installed(self):
         for relative in LINKS:
             destination = self.target / relative
-            source = self.repo / 'framework/agent' / ('role-orchestration.md' if relative == 'AGENTS.md' else relative)
+            source = self.repo / 'framework/agent' / relative
             self.assertTrue(destination.is_symlink(), relative)
             self.assertEqual(os.readlink(destination), str(source))
         self.assertIn('name: copilot', (self.target / 'skills/copilot/SKILL.md').read_text())
@@ -149,7 +149,7 @@ class InstallTests(unittest.TestCase):
     def test_runtime_failure_rolls_back_only_new_links(self):
         self.target.mkdir(parents=True)
         old_link = self.target / 'AGENTS.md'
-        old_link.symlink_to(self.repo / 'framework/agent/role-orchestration.md')
+        old_link.symlink_to(self.repo / 'framework/agent/AGENTS.md')
         stubs = self.work / 'command-stubs'
         stubs.mkdir()
         wrapper = stubs / 'ln'

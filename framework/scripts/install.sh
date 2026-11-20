@@ -15,9 +15,6 @@ while [ "${target%/}" != "$target" ]; do target="${target%/}"; done
 [ -n "$target" ] || die 'Корень файловой системы не является целевым каталогом.'
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source_root="$(cd "$script_dir/../.." && pwd -P)/framework/agent"
-source_for() {
-  if [ "$1" = AGENTS.md ]; then printf '%s' "$source_root/role-orchestration.md"; else printf '%s' "$source_root/$1"; fi
-}
 reference_paths=()
 [ -r "$source_root/reference-files.txt" ] || die 'Отсутствует список модулей reference-files.txt.'
 while IFS= read -r relative; do
@@ -25,7 +22,7 @@ while IFS= read -r relative; do
   reference_paths+=("$relative")
 done < "$source_root/reference-files.txt"
 required_files=(
-  'role-orchestration.md'
+  'AGENTS.md'
   "${reference_paths[@]}"
   'skills/copilot/SKILL.md'
   'skills/copilot/references/java-impact-checklist.md'
@@ -53,7 +50,7 @@ stale_count=0
 for destination in "$target"/references/*.md; do
   [ -L "$destination" ] || continue
   relative="references/${destination##*/}"
-  source="$(source_for "$relative")"
+  source="$source_root/$relative"
   [ ! -e "$source" ] || continue
   link="$(readlink "$destination")"
   if [ "$link" = "$source" ]; then
@@ -64,7 +61,7 @@ done
 conflicts=0
 for relative in "${relative_paths[@]}"; do
   destination="$target/$relative"
-  source="$(source_for "$relative")"
+  source="$source_root/$relative"
   if [ -L "$destination" ] && [ "$(readlink "$destination")" = "$source" ]; then
     continue
   fi
@@ -97,7 +94,7 @@ if [ "$dry_run" -eq 1 ]; then
     if [ -L "$target/$relative" ]; then
       printf 'Уже подключено: %s\n' "$target/$relative"
     else
-      printf 'Создать ссылку: %s -> %s\n' "$target/$relative" "$(source_for "$relative")"
+      printf 'Создать ссылку: %s -> %s\n' "$target/$relative" "$source_root/$relative"
     fi
   done
   printf 'Dry-run: ничего не записано.\n'
@@ -113,7 +110,7 @@ cleanup() {
     for ((i=0; i<created_count; i++)); do
       relative="${created_paths[$i]}"
       destination="$target/$relative"
-      if [ -L "$destination" ] && [ "$(readlink "$destination")" = "$(source_for "$relative")" ]; then
+      if [ -L "$destination" ] && [ "$(readlink "$destination")" = "$source_root/$relative" ]; then
         rm "$destination" || true
       fi
     done
@@ -127,7 +124,7 @@ trap 'exit 143' TERM
 
 for relative in "${relative_paths[@]}"; do
   destination="$target/$relative"
-  source="$(source_for "$relative")"
+  source="$source_root/$relative"
   if [ -L "$destination" ] && [ "$(readlink "$destination")" = "$source" ]; then
     printf 'Уже подключено: %s\n' "$destination"
     continue
