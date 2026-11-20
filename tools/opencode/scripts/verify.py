@@ -30,7 +30,7 @@ def verify(check_tools=True):
             config_available = True
         except (OSError, ValueError) as e:
             failures.append('Не удалось прочитать глобальный конфиг: ' + str(e))
-    for key, path in [('instructions', SOURCE / 'role-orchestration.md'), ('skills', SOURCE / 'skills')]:
+    for key, path in [('instructions', SOURCE / 'AGENTS.md'), ('skills', SOURCE / 'skills')]:
         values = data.get(key)
         if not isinstance(values, list) or str(path) not in values:
             failures.append(f'В {key} отсутствует путь {path}.')
@@ -41,7 +41,7 @@ def verify(check_tools=True):
     except (OSError, UnicodeError) as e:
         failures.append('Недоступен список модулей: ' + str(e))
         reference_paths = []
-    for file in ['role-orchestration.md', *reference_paths,
+    for file in ['AGENTS.md', *reference_paths,
                  'skills/coach/SKILL.md', 'skills/coach/references/java-impact-checklist.md',
                  'skills/coach/references/scientific-basis.md', 'skills/copilot/SKILL.md',
                  'skills/copilot/references/java-impact-checklist.md', 'skills/executor/SKILL.md',
@@ -57,7 +57,7 @@ def verify(check_tools=True):
         except (OSError, UnicodeError) as e:
             failures.append(f'Недоступен {SOURCE / file}: {e}')
     try:
-        router = (SOURCE / 'role-orchestration.md').read_text(encoding='utf-8')
+        router = (SOURCE / 'AGENTS.md').read_text(encoding='utf-8')
         for relative in re.findall(r'`(references/[\w-]+\.md)`', router):
             if relative not in reference_paths:
                 failures.append('Модуль маршрутизатора не зарегистрирован: ' + relative)

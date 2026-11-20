@@ -91,7 +91,7 @@ def main():
     args = parser.parse_args()
     codex, skills = args.codex_home, args.skills_dir
     reference_paths = (ROOT / 'reference-files.txt').read_text().splitlines()
-    required = ['role-orchestration.md', *reference_paths,
+    required = ['AGENTS.md', *reference_paths,
                 'skills/coach/SKILL.md', 'skills/coach/references/scientific-basis.md',
                 *[f'skills/{role}/references/java-impact-checklist.md' for role in ('coach', 'copilot', 'executor')],
                 'skills/copilot/SKILL.md', 'skills/executor/SKILL.md']
@@ -119,7 +119,7 @@ def main():
     for parent in active.parents:
         if (parent.exists() or parent.is_symlink()) and not parent.is_dir():
             error(f'Родительский путь не является папкой: {parent}')
-    after = render(before, (ROOT / 'role-orchestration.md').read_bytes(), source_policy)
+    after = render(before, (ROOT / 'AGENTS.md').read_bytes(), source_policy)
     stale = {}
     for dest in (codex / 'references').glob('*.md'):
         relative = Path('references') / dest.name

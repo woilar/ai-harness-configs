@@ -19,7 +19,7 @@
 
 ## Какие файлы за что отвечают
 
-- [role-orchestration.md](../framework/agent/role-orchestration.md) — постоянно доступный
+- [AGENTS.md](../framework/agent/AGENTS.md) — постоянно доступный
   маршрутизатор: выбор роли, основные границы, четыре фазы и команды.
 - [Модули политики](../framework/agent/references/) — читать по событию из маршрутизатора.
 - [Copilot](../framework/agent/skills/copilot/SKILL.md),

@@ -22,7 +22,7 @@ bash tools/codex/scripts/install.sh
 
 | Где Codex ищет | На что указывает ссылка |
 | --- | --- |
-| `${CODEX_HOME:-~/.codex}/AGENTS.override.md` или `AGENTS.md` | управляемый блок с текстом `role-orchestration.md` и абсолютным путём к политике |
+| `${CODEX_HOME:-~/.codex}/AGENTS.override.md` или `AGENTS.md` | управляемый блок с текстом `AGENTS.md` и абсолютным путём к политике |
 | `${CODEX_HOME:-~/.codex}/references/*.md` из `reference-files.txt` | отдельные модули для чтения по событию |
 | `~/.agents/skills/coach` | общий Coach со справочниками |
 | `~/.agents/skills/copilot` | общий Copilot со справочником |

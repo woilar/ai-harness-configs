@@ -20,7 +20,7 @@ class InstallTest(unittest.TestCase):
         self.codex = self.work / 'codex settings'
         self.skills = self.work / 'skills settings'
         self.agent = self.codex / 'AGENTS.md'
-        self.router = self.repo / 'framework/agent/role-orchestration.md'
+        self.router = self.repo / 'framework/agent/AGENTS.md'
         self.policy = self.repo / 'framework/agent/references'
         reference_paths = (self.repo / 'framework/agent/reference-files.txt').read_text().splitlines()
         self.links = {**{self.codex / relative: self.repo / 'framework/agent' / relative for relative in reference_paths},

@@ -27,7 +27,7 @@ class InstallTest(unittest.TestCase):
         self.assertEqual(self.run_install().returncode, 0)
         config = self.target / 'opencode.json'
         value = json.loads(config.read_text())
-        self.assertEqual(value['instructions'], [str(SOURCE / 'role-orchestration.md')])
+        self.assertEqual(value['instructions'], [str(SOURCE / 'AGENTS.md')])
         self.assertEqual(value['skills'], [str(SOURCE / 'skills')])
         original = config.read_text()
         self.assertEqual(self.run_install().returncode, 0)
@@ -186,7 +186,7 @@ class InstallTest(unittest.TestCase):
         self.assertIn('// comment', cfg.read_text())
         self.assertIn('"model": "some/model"', cfg.read_text())
         self.assertIn('"~/other.md",', cfg.read_text())
-        self.assertIn(str(SOURCE / 'role-orchestration.md'), cfg.read_text())
+        self.assertIn(str(SOURCE / 'AGENTS.md'), cfg.read_text())
         self.assertEqual((self.target / 'AGENTS.md').read_text(), 'personal')
         self.assertIn(plugins, cfg.read_text())
         self.assertIn(mcp, cfg.read_text())

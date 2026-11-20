@@ -5,14 +5,14 @@ Copilot, Coach, Executor и их справочники. Дублировать 
 не нужно. Установщик рассчитан на macOS и Linux, Bash и Python 3;
 для Windows используйте WSL. OpenCode V2 и провайдер модели подключаются отдельно.
 
-Основной файл правил — `framework/agent/role-orchestration.md`.
+Основной файл правил — `framework/agent/AGENTS.md`.
 
 ```bash
 bash tools/opencode/scripts/install.sh --dry-run
 bash tools/opencode/scripts/install.sh
 ```
 
-Установщик добавляет абсолютные пути к `role-orchestration.md` в `instructions`
+Установщик добавляет абсолютные пути к `AGENTS.md` в `instructions`
 и к папке `framework/agent/skills` в `skills` глобального `opencode.json` или
 `opencode.jsonc`. Существующий `AGENTS.md` и другие настройки сохраняются;
 комментарии JSONC не удаляются.
@@ -34,7 +34,7 @@ bash tools/opencode/scripts/install.sh
 начните новую сессию.
 
 В новой сессии попросите использовать skill Copilot, Coach или Executor.
-Выбор роли по смыслу также описан в `role-orchestration.md`. `/strict` и
+Выбор роли по смыслу также описан в `AGENTS.md`. `/strict` и
 `/deferred` — текстовые инструкции, а не зарегистрированные slash-команды:
 пишите, например, «применяй /strict к этой задаче». Фактическое следование
 правилам зависит от модели и настроек разрешений.
