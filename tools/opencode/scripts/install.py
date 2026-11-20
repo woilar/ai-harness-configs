@@ -7,8 +7,8 @@ import subprocess
 from pathlib import Path
 import tempfile
 
-ROOT = next(parent for parent in Path(__file__).resolve().parents if (parent / 'shared/agent').is_dir())
-SOURCE = ROOT / 'shared/agent'
+ROOT = next(parent for parent in Path(__file__).resolve().parents if (parent / 'framework/agent').is_dir())
+SOURCE = ROOT / 'framework/agent'
 
 
 def clean_jsonc(text):
@@ -164,24 +164,9 @@ def main():
     print('Конфиг:', config)
     print('Инструкции:', instruction)
     print('Скиллы:', skills)
-    legacy = Path.home() / '.engineering-learning'
-    if legacy.exists() and not legacy.is_symlink(): print('Найден прежний учебный журнал:', legacy)
-    # The old installer used symlinks; do not load its rules twice or override skill IDs.
-    old_paths = ['AGENTS.md', 'references/policy-details.md', 'skills/coach', 'skills/copilot', 'skills/executor']
-    old_paths += [str(Path('references') / p.name) for p in (target / 'references').glob('*.md')
-                  if p.is_symlink() and not (SOURCE / 'references' / p.name).exists()]
-    managed = []
-    for relative in old_paths:
-        dest = target / relative
-        if dest.is_symlink():
-            link = Path(os.readlink(dest))
-            candidates = [SOURCE / relative, ROOT / 'omp/agent' / relative]
-            if link.is_absolute() and any(link == c for c in candidates): managed.append(dest)
-    if managed:
-        print('Прежние ссылки фреймворка будут отключены:', *(str(p) for p in managed), sep='\n  ')
     report_plannotator_plugin(parsed_result, config)
     try:
-        subprocess.run(['bash', str(ROOT / 'shared/scripts/check-tools.sh')], check=False)
+        subprocess.run(['bash', str(ROOT / 'framework/scripts/check-tools.sh')], check=False)
     except OSError as exc:
         print(f'Диагностика инструментов недоступна; установка правил продолжается: {exc}')
     if args.dry_run:
@@ -198,9 +183,6 @@ def main():
             os.replace(temp, config)
         finally:
             if os.path.exists(temp): os.unlink(temp)
-    for dest in managed:
-        if dest.is_symlink() and Path(os.readlink(dest)) in [SOURCE / str(dest.relative_to(target)), ROOT / 'omp/agent' / str(dest.relative_to(target))]:
-            dest.unlink()
     from verify import verify
     print('Проверка установленной конфигурации:')
     if verify(check_tools=False): raise ValueError('Проверка не пройдена; см. ошибки выше')

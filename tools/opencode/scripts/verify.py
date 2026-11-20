@@ -68,10 +68,9 @@ def verify(check_tools=True):
             for link in re.findall(r'\]\(([^)#]+\.md)\)', module.read_text(encoding='utf-8')):
                 if not (module.parent / link).is_file():
                     failures.append(f'Недоступна ссылка модуля {relative}: {link}')
-        eager = set(reference_paths) - {'references/policy-details.md'}
         instructions = data.get('instructions', [])
         if isinstance(instructions, list):
-            for relative in eager:
+            for relative in reference_paths:
                 if str(SOURCE / relative) in instructions:
                     warnings.append('Модуль загружается при старте вместо чтения по событию: ' + relative)
     except (OSError, UnicodeError) as e:
@@ -80,7 +79,7 @@ def verify(check_tools=True):
     if check_tools:
         report_plannotator_plugin(data if config_available else None, configs[0] if len(configs) == 1 else target)
         try:
-            subprocess.run(['bash', str(ROOT / 'shared/scripts/check-tools.sh')], check=False)
+            subprocess.run(['bash', str(ROOT / 'framework/scripts/check-tools.sh')], check=False)
         except OSError as e:
             warnings.append('Диагностика Plannotator недоступна: ' + str(e))
     # A user-owned global skill with a matching ID can affect discovery/precedence.
@@ -88,8 +87,6 @@ def verify(check_tools=True):
         for base in (target / 'skills', home / '.agents/skills', home / '.claude/skills'):
             candidate = base / name
             if candidate.exists() or candidate.is_symlink(): warnings.append(f'Проверьте дублирование скилла {name}: {candidate}')
-    old = home / '.engineering-learning'
-    if old.exists() and not old.is_symlink(): warnings.append(f'Есть прежний журнал: {old}. Проверьте перенос в {home / "ai/learning"}.')
     binary = shutil.which('opencode2') or shutil.which('opencode')
     if binary:
         try:

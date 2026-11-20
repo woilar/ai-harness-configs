@@ -14,9 +14,10 @@ case "$target" in /*) ;; *) die '--target требует абсолютного 
 while [ "${target%/}" != "$target" ]; do target="${target%/}"; done
 [ -n "$target" ] || die 'Корень файловой системы не является целевым каталогом.'
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-source_root="$(cd "$script_dir/../.." && pwd -P)/shared/agent"
-# This stable compatibility path keeps existing global links valid.
-legacy_path="$(cd "$script_dir/../.." && pwd -P)/omp/agent"
+source_root="$(cd "$script_dir/../.." && pwd -P)/framework/agent"
+source_for() {
+  if [ "$1" = AGENTS.md ]; then printf '%s' "$source_root/role-orchestration.md"; else printf '%s' "$source_root/$1"; fi
+}
 reference_paths=()
 [ -r "$source_root/reference-files.txt" ] || die 'Отсутствует список модулей reference-files.txt.'
 while IFS= read -r relative; do
@@ -24,7 +25,6 @@ while IFS= read -r relative; do
   reference_paths+=("$relative")
 done < "$source_root/reference-files.txt"
 required_files=(
-  'AGENTS.md'
   'role-orchestration.md'
   "${reference_paths[@]}"
   'skills/copilot/SKILL.md'
@@ -53,10 +53,10 @@ stale_count=0
 for destination in "$target"/references/*.md; do
   [ -L "$destination" ] || continue
   relative="references/${destination##*/}"
-  source="$source_root/$relative"
+  source="$(source_for "$relative")"
   [ ! -e "$source" ] || continue
   link="$(readlink "$destination")"
-  if [ "$link" = "$source" ] || [ "$link" = "$legacy_path/$relative" ]; then
+  if [ "$link" = "$source" ]; then
     stale_paths[$stale_count]="$relative"
     stale_count=$((stale_count + 1))
   fi
@@ -64,8 +64,8 @@ done
 conflicts=0
 for relative in "${relative_paths[@]}"; do
   destination="$target/$relative"
-  source="$source_root/$relative"
-  if [ -L "$destination" ] && { [ "$(readlink "$destination")" = "$source" ] || { [ "$(readlink "$destination")" = "$legacy_path/$relative" ] && [ -e "$destination" ]; }; }; then
+  source="$(source_for "$relative")"
+  if [ -L "$destination" ] && [ "$(readlink "$destination")" = "$source" ]; then
     continue
   fi
   if [ -e "$destination" ] || [ -L "$destination" ]; then
@@ -89,9 +89,6 @@ fi
 
 printf 'Источник: %s\nЦель: %s\n' "$source_root" "$target"
 bash "$script_dir/check-tools.sh" || printf 'Диагностика инструментов недоступна; установка правил продолжается.\n' >&2
-if [ -e "$HOME/.engineering-learning" ] && [ ! -L "$HOME/.engineering-learning" ]; then
-  printf 'Найден прежний учебный журнал: %s/.engineering-learning. Проверьте перенос в %s/ai/learning; существующие данные не изменены.\n' "$HOME" "$HOME"
-fi
 if [ "$dry_run" -eq 1 ]; then
   for ((i=0; i<stale_count; i++)); do
     printf 'Убрать устаревшую ссылку: %s\n' "$target/${stale_paths[$i]}"
@@ -100,7 +97,7 @@ if [ "$dry_run" -eq 1 ]; then
     if [ -L "$target/$relative" ]; then
       printf 'Уже подключено: %s\n' "$target/$relative"
     else
-      printf 'Создать ссылку: %s -> %s\n' "$target/$relative" "$source_root/$relative"
+      printf 'Создать ссылку: %s -> %s\n' "$target/$relative" "$(source_for "$relative")"
     fi
   done
   printf 'Dry-run: ничего не записано.\n'
@@ -116,7 +113,7 @@ cleanup() {
     for ((i=0; i<created_count; i++)); do
       relative="${created_paths[$i]}"
       destination="$target/$relative"
-      if [ -L "$destination" ] && [ "$(readlink "$destination")" = "$source_root/$relative" ]; then
+      if [ -L "$destination" ] && [ "$(readlink "$destination")" = "$(source_for "$relative")" ]; then
         rm "$destination" || true
       fi
     done
@@ -130,8 +127,8 @@ trap 'exit 143' TERM
 
 for relative in "${relative_paths[@]}"; do
   destination="$target/$relative"
-  source="$source_root/$relative"
-  if [ -L "$destination" ] && { [ "$(readlink "$destination")" = "$source" ] || { [ "$(readlink "$destination")" = "$legacy_path/$relative" ] && [ -e "$destination" ]; }; }; then
+  source="$(source_for "$relative")"
+  if [ -L "$destination" ] && [ "$(readlink "$destination")" = "$source" ]; then
     printf 'Уже подключено: %s\n' "$destination"
     continue
   fi
@@ -151,7 +148,7 @@ for ((i=0; i<stale_count; i++)); do
   destination="$target/$relative"
   if [ -L "$destination" ] && [ ! -e "$source_root/$relative" ]; then
     link="$(readlink "$destination")"
-    if [ "$link" = "$source_root/$relative" ] || [ "$link" = "$legacy_path/$relative" ]; then
+    if [ "$link" = "$source_root/$relative" ]; then
       rm "$destination"
       printf 'Убрана устаревшая ссылка: %s\n' "$destination"
     fi

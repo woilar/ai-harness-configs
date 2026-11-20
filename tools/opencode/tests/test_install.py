@@ -6,9 +6,9 @@ import subprocess
 import tempfile
 import unittest
 
-ROOT = next(parent for parent in Path(__file__).resolve().parents if (parent / 'shared/agent').is_dir())
-INSTALL = ROOT / 'opencode/scripts/install.sh'
-SOURCE = ROOT / 'shared/agent'
+ROOT = next(parent for parent in Path(__file__).resolve().parents if (parent / 'framework/agent').is_dir())
+INSTALL = ROOT / 'tools/opencode/scripts/install.sh'
+SOURCE = ROOT / 'framework/agent'
 
 class InstallTest(unittest.TestCase):
     def setUp(self):
@@ -48,24 +48,24 @@ class InstallTest(unittest.TestCase):
 
     def test_verify_reports_missing_skill_file(self):
         isolated = self.home / 'repository'
-        shutil.copytree(ROOT / 'shared', isolated / 'shared')
-        shutil.copytree(ROOT / 'opencode', isolated / 'opencode')
-        script = isolated / 'opencode/scripts/install.sh'
+        shutil.copytree(ROOT / 'framework', isolated / 'framework')
+        shutil.copytree(ROOT / 'tools/opencode', isolated / 'tools/opencode')
+        script = isolated / 'tools/opencode/scripts/install.sh'
         self.assertEqual(subprocess.run(['bash', str(script)], env=self.env, capture_output=True).returncode, 0)
-        (isolated / 'shared/agent/skills/coach/SKILL.md').unlink()
+        (isolated / 'framework/agent/skills/coach/SKILL.md').unlink()
         result = subprocess.run(['bash', str(script), '--verify'], env=self.env, capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('coach/SKILL.md', result.stderr)
 
     def test_missing_workflow_module(self):
         isolated = self.home / 'repository'
-        shutil.copytree(ROOT / 'shared', isolated / 'shared')
-        shutil.copytree(ROOT / 'opencode', isolated / 'opencode')
-        script = isolated / 'opencode/scripts/install.sh'
+        shutil.copytree(ROOT / 'framework', isolated / 'framework')
+        shutil.copytree(ROOT / 'tools/opencode', isolated / 'tools/opencode')
+        script = isolated / 'tools/opencode/scripts/install.sh'
         self.assertEqual(subprocess.run(['bash', str(script)], env=self.env, capture_output=True).returncode, 0)
         for name in ('planning.md', 'task-state.md', 'inbox.md', 'handoff.md'):
             with self.subTest(module=name):
-                module = isolated / 'shared/agent/references' / name
+                module = isolated / 'framework/agent/references' / name
                 original = module.read_text()
                 module.unlink()
                 result = subprocess.run(['bash', str(script), '--verify'], env=self.env, capture_output=True, text=True)
@@ -75,11 +75,11 @@ class InstallTest(unittest.TestCase):
 
     def test_verify_checks_router_manifest_contract(self):
         isolated = self.home / 'repository'
-        shutil.copytree(ROOT / 'shared', isolated / 'shared')
-        shutil.copytree(ROOT / 'opencode', isolated / 'opencode')
-        script = isolated / 'opencode/scripts/install.sh'
+        shutil.copytree(ROOT / 'framework', isolated / 'framework')
+        shutil.copytree(ROOT / 'tools/opencode', isolated / 'tools/opencode')
+        script = isolated / 'tools/opencode/scripts/install.sh'
         self.assertEqual(subprocess.run(['bash', str(script)], env=self.env, capture_output=True).returncode, 0)
-        manifest = isolated / 'shared/agent/reference-files.txt'
+        manifest = isolated / 'framework/agent/reference-files.txt'
         manifest.write_text(manifest.read_text().replace('references/inbox.md\n', ''))
         result = subprocess.run(['bash', str(script), '--verify'], env=self.env, capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
@@ -158,7 +158,7 @@ class InstallTest(unittest.TestCase):
         self.assertIn('глобальная конфигурация не проверена', r.stdout)
         self.assertNotIn('не найдено в проверенном глобальном конфиге', r.stdout)
 
-    def test_upgrade_removes_only_retired_owned_links(self):
+    def test_registration_leaves_unrelated_reference_links_untouched(self):
         refs = self.target / 'references'
         refs.mkdir(parents=True)
         stale = refs / 'retired.md'
@@ -170,7 +170,7 @@ class InstallTest(unittest.TestCase):
         self.assertEqual(self.run_install('--dry-run').returncode, 0)
         self.assertTrue(stale.is_symlink())
         self.assertEqual(self.run_install().returncode, 0)
-        self.assertFalse(stale.is_symlink())
+        self.assertTrue(stale.is_symlink())
         self.assertTrue(foreign.is_symlink())
         self.assertEqual(personal.read_text(), 'keep')
 
@@ -205,31 +205,13 @@ class InstallTest(unittest.TestCase):
         self.assertNotEqual(self.run_install().returncode, 0)
         self.assertEqual(cfg.read_text(), '{}')
 
-    def test_old_managed_links_removed_after_registration(self):
-        self.target.mkdir(parents=True)
-        for name in ('AGENTS.md','references/policy-details.md','skills/coach','skills/copilot','skills/executor'):
-            p = self.target / name
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.symlink_to(SOURCE / name)
-        self.assertEqual(self.run_install('--dry-run').returncode, 0)
-        self.assertTrue((self.target / 'AGENTS.md').is_symlink())
-        r = self.run_install()
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertFalse((self.target / 'AGENTS.md').is_symlink())
-        self.assertTrue((self.target / 'opencode.json').exists())
-
-    def test_without_omp_directory_and_legacy_data(self):
+    def test_standalone_framework_and_opencode_layout(self):
         isolated = self.home / 'repository'
-        shutil.copytree(ROOT / 'shared', isolated / 'shared')
-        shutil.copytree(ROOT / 'opencode', isolated / 'opencode')
-        old = self.home / '.engineering-learning/gaps'
-        old.mkdir(parents=True)
-        (old / 'card.md').write_text('existing gap')
-        r = subprocess.run(['bash', str(isolated / 'opencode/scripts/install.sh')], env=self.env, capture_output=True, text=True)
+        shutil.copytree(ROOT / 'framework', isolated / 'framework')
+        shutil.copytree(ROOT / 'tools/opencode', isolated / 'tools/opencode')
+        r = subprocess.run(['bash', str(isolated / 'tools/opencode/scripts/install.sh')], env=self.env, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn('прежний учебный журнал', r.stdout)
-        self.assertEqual((old / 'card.md').read_text(), 'existing gap')
-        self.assertIn(str(isolated / 'shared/agent/skills'), (self.target / 'opencode.json').read_text())
+        self.assertIn(str(isolated / 'framework/agent/skills'), (self.target / 'opencode.json').read_text())
 
 if __name__ == '__main__': unittest.main()
 

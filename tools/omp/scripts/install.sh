@@ -6,7 +6,7 @@ usage() {
   cat <<'USAGE'
 Установка глобальных инструкций и skills Oh My Pi.
 
-Использование: bash omp/scripts/install.sh [параметры]
+Использование: bash tools/omp/scripts/install.sh [параметры]
   --profile NAME  Стандартный каталог именованного профиля; default — обычный.
   --target PATH   Собственный абсолютный путь к agent-каталогу.
   --dry-run       Показать действия без записи.
@@ -67,9 +67,7 @@ while [ "${target%/}" != "$target" ]; do target="${target%/}"; done
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd "$script_dir/../../.." && pwd -P)"
-# Resolve both canonical tools/omp and legacy copied layouts.
-if [ ! -d "$repo_root/shared/agent" ]; then repo_root="$(cd "$script_dir/../.." && pwd -P)"; fi
 if [ "$dry_run" -eq 1 ]; then
-  exec bash "$repo_root/shared/scripts/install.sh" --target "$target" --dry-run
+  exec bash "$repo_root/framework/scripts/install.sh" --target "$target" --dry-run
 fi
-exec bash "$repo_root/shared/scripts/install.sh" --target "$target"
+exec bash "$repo_root/framework/scripts/install.sh" --target "$target"

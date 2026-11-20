@@ -1,13 +1,13 @@
 # Copilot, Coach и Executor: как пользоваться
 
 Обновлено 2026-11-05. Это руководство для пользователя, а не дополнительный skill.
-Актуальные инструкции хранятся в `shared/agent/`; их полные тексты здесь не
+Актуальные инструкции хранятся в `framework/agent/`; их полные тексты здесь не
 дублируются. Загружать весь гайд в каждую сессию не требуется.
 
 ## Установить или обновить
 
-Выберите инструкцию своей среды: [OMP](../omp/README.md) или
-[OpenCode V2](../opencode/README.md) или [Codex](../codex/README.md). Установщики используют общие исходники.
+Выберите инструкцию своей среды: [OMP](../tools/omp/README.md) или
+[OpenCode V2](../tools/opencode/README.md) или [Codex](../tools/codex/README.md). Установщики используют общие исходники.
 Не заменяйте собственные настройки копированием всего гайда.
 После обновления репозитория начните новую сессию по инструкции своей среды.
 Само наличие репозитория не означает установку skills в ChatGPT или на другом ПК.
@@ -21,9 +21,7 @@
 
 - [role-orchestration.md](../framework/agent/role-orchestration.md) — постоянно доступный
   маршрутизатор: выбор роли, основные границы, четыре фазы и команды.
-- [policy-details.md](../framework/agent/references/policy-details.md) — короткий индекс
-  отдельных модулей: planning, task-state, execution, validation, handoff,
-  learning-journal, metrics и plan-template. Это не общий файл всех правил.
+- [Модули политики](../framework/agent/references/) — читать по событию из маршрутизатора.
 - [Copilot](../framework/agent/skills/copilot/SKILL.md),
   [Coach](../framework/agent/skills/coach/SKILL.md),
   [Executor](../framework/agent/skills/executor/SKILL.md) — тактика активной роли.
@@ -203,7 +201,7 @@ Fast-Track действует только в Executor для точно зад�
 
 ## Проверить поведение ролей
 
-[Сценарии проверки](../evals/role-behavior.md) предназначены для независимых
+[Сценарии проверки](../framework/evals/role-behavior.md) предназначены для независимых
 сессий в выдуманных проектах. Проверка установщика подтверждает подключение
 файлов; следование правилам оценивается по ответам и фактическим артефактам.
 

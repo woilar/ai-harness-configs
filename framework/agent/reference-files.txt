@@ -1,4 +1,3 @@
-references/policy-details.md
 references/planning.md
 references/task-state.md
 references/inbox.md

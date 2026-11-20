@@ -28,7 +28,7 @@ class ToolDiagnosticsTest(unittest.TestCase):
         return path
 
     def diagnose(self):
-        return subprocess.run([BASH, str(ROOT / 'shared/scripts/check-tools.sh')],
+        return subprocess.run([BASH, str(ROOT / 'framework/scripts/check-tools.sh')],
                               env=self.env, capture_output=True, text=True, timeout=10)
 
     def test_missing_tools_only_print_official_links(self):
@@ -66,7 +66,7 @@ class ToolDiagnosticsTest(unittest.TestCase):
                 home = self.work / harness
                 env = dict(self.env, HOME=str(home), CODEX_HOME=str(home / '.codex'),
                            XDG_CONFIG_HOME=str(home / 'config'))
-                command = [BASH, str(ROOT / harness / 'scripts/install.sh')]
+                command = [BASH, str(ROOT / 'tools' / harness / 'scripts/install.sh')]
                 for args in (['--dry-run'], [], []):
                     result = subprocess.run(command + args, env=env, capture_output=True,
                                             text=True, timeout=20)
