@@ -8,8 +8,8 @@ import subprocess
 import tempfile
 import unittest
 
-REPOSITORY = next(parent for parent in Path(__file__).resolve().parents if (parent / 'shared/agent').is_dir())
-REFERENCES = tuple((REPOSITORY / 'shared/agent/reference-files.txt').read_text().splitlines())
+REPOSITORY = next(parent for parent in Path(__file__).resolve().parents if (parent / 'framework/agent').is_dir())
+REFERENCES = tuple((REPOSITORY / 'framework/agent/reference-files.txt').read_text().splitlines())
 LINKS = ('AGENTS.md', *REFERENCES, 'skills/copilot',
          'skills/coach', 'skills/executor')
 
@@ -22,7 +22,7 @@ class InstallTests(unittest.TestCase):
         self.repo = self.work / 'repository with spaces'
         shutil.copytree(REPOSITORY, self.repo,
                         ignore=shutil.ignore_patterns('.git', '.ai-plans', '__pycache__', 'build', 'dist'))
-        self.script = self.repo / 'omp/scripts/install.sh'
+        self.script = self.repo / 'tools/omp/scripts/install.sh'
         self.target = self.work / 'global settings with spaces' / 'agent'
 
     def run_install(self, *args, env=None):
@@ -32,7 +32,7 @@ class InstallTests(unittest.TestCase):
     def assert_installed(self):
         for relative in LINKS:
             destination = self.target / relative
-            source = self.repo / 'shared/agent' / relative
+            source = self.repo / 'framework/agent' / ('role-orchestration.md' if relative == 'AGENTS.md' else relative)
             self.assertTrue(destination.is_symlink(), relative)
             self.assertEqual(os.readlink(destination), str(source))
         self.assertIn('name: copilot', (self.target / 'skills/copilot/SKILL.md').read_text())
@@ -62,16 +62,6 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('ничего не записано', result.stdout)
         self.assertFalse(self.target.exists())
-
-    def test_old_omp_links_remain_valid(self):
-        for relative in LINKS:
-            dest = self.target / relative
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.symlink_to(self.repo / 'omp/agent' / relative)
-        result = self.run_install()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('Новых ссылок: 0', result.stdout)
-        self.assertIn('name: coach', (self.target / 'skills/coach/SKILL.md').read_text())
 
     def test_late_destination_conflict_has_no_partial_install(self):
         conflict = self.target / 'skills/executor'
@@ -112,7 +102,7 @@ class InstallTests(unittest.TestCase):
         self.assertEqual((self.target / 'skills').read_text(), 'not a directory\n')
 
     def test_missing_reference_is_rejected(self):
-        reference = self.repo / 'shared/agent/skills/coach/references/scientific-basis.md'
+        reference = self.repo / 'framework/agent/skills/coach/references/scientific-basis.md'
         reference.unlink()
         result = self.run_install()
         self.assertNotEqual(result.returncode, 0)
@@ -124,7 +114,7 @@ class InstallTests(unittest.TestCase):
         self.assertFalse(self.target.exists())
 
     def test_missing_workflow_module_stops_before_install(self):
-        (self.repo / 'shared/agent/references/planning.md').unlink()
+        (self.repo / 'framework/agent/references/planning.md').unlink()
         result = self.run_install()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('planning.md', result.stderr)
@@ -144,18 +134,6 @@ class InstallTests(unittest.TestCase):
             for link in re.findall(r'\]\(([^)#]+\.md)\)', installed.read_text()):
                 self.assertTrue((installed.parent / link).is_file(), (relative, link))
 
-    def test_upgrade_from_original_five_links(self):
-        for relative in ('AGENTS.md', 'references/policy-details.md', 'skills/copilot', 'skills/coach', 'skills/executor'):
-            dest = self.target / relative
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.symlink_to(self.repo / 'shared/agent' / relative)
-        personal = self.target / 'references/personal.md'
-        personal.write_text('keep')
-        result = self.run_install()
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assert_installed()
-        self.assertEqual(personal.read_text(), 'keep')
-
     def test_profile_path_and_invalid_name(self):
         for name, suffix in [('java', '.omp/profiles/java/agent'), ('default', '.omp/agent')]:
             result = subprocess.run(['bash', str(self.script), '--profile', name, '--dry-run'],
@@ -171,7 +149,7 @@ class InstallTests(unittest.TestCase):
     def test_runtime_failure_rolls_back_only_new_links(self):
         self.target.mkdir(parents=True)
         old_link = self.target / 'AGENTS.md'
-        old_link.symlink_to(self.repo / 'omp/agent/AGENTS.md')
+        old_link.symlink_to(self.repo / 'framework/agent/role-orchestration.md')
         stubs = self.work / 'command-stubs'
         stubs.mkdir()
         wrapper = stubs / 'ln'
@@ -182,7 +160,7 @@ class InstallTests(unittest.TestCase):
         result = self.run_install(env=env)
         self.assertNotEqual(result.returncode, 0)
         self.assertTrue(old_link.is_symlink())
-        self.assertFalse((self.target / 'references/policy-details.md').is_symlink())
+        self.assertFalse((self.target / 'references/planning.md').is_symlink())
         self.assertFalse((self.target / 'skills/copilot').exists())
 
 

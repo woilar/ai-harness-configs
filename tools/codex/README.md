@@ -1,6 +1,6 @@
 # Codex: подключение Copilot, Coach и Executor
 
-Этот вариант подключает общие файлы `shared/agent/` к **локальному** Codex CLI
+Этот вариант подключает общие файлы `framework/agent/` к **локальному** Codex CLI
 и IDE extension. Навигацию по трём ролям и методике см. в
 [общем гайде](../../docs/engineering-ai-skills-guide.md).
 
@@ -23,7 +23,7 @@ bash tools/codex/scripts/install.sh
 | Где Codex ищет | На что указывает ссылка |
 | --- | --- |
 | `${CODEX_HOME:-~/.codex}/AGENTS.override.md` или `AGENTS.md` | управляемый блок с текстом `role-orchestration.md` и абсолютным путём к политике |
-| `${CODEX_HOME:-~/.codex}/references/*.md` из `reference-files.txt` | отдельные модули для чтения по событию; policy-details.md — индекс |
+| `${CODEX_HOME:-~/.codex}/references/*.md` из `reference-files.txt` | отдельные модули для чтения по событию |
 | `~/.agents/skills/coach` | общий Coach со справочниками |
 | `~/.agents/skills/copilot` | общий Copilot со справочником |
 | `~/.agents/skills/executor` | общий Executor со справочником |
@@ -87,7 +87,7 @@ Codex с тем же `CODEX_HOME`.
 
 Установщик проверяет ссылки и доступность файлов; он не запускает Codex, не
 проверяет авторизацию, модель, фактическое обнаружение skills и поведение AI.
-См. также [сценарии оценки](../evals/role-behavior.md).
+См. также [сценарии оценки](../../framework/evals/role-behavior.md).
 
 ## Обновление и удаление
 
@@ -100,7 +100,7 @@ Skills и подробная политика подключены ссылка�
 
 Чтобы удалить интеграцию, удалите только управляемый блок вместе с маркерами
 из активного файла инструкций. Затем проверьте, что ссылки на политику и три
-skills указывают на ваш клон, и удалите только эти четыре ссылки. Не удаляйте
+skills указывают на ваш клон, и удалите только ссылки этого фреймворка. Не удаляйте
 пользовательские инструкции, другие skills или исходники клона.
 
 Для разработчиков: `python3 tools/codex/tests/test_install.py` запускает тесты в

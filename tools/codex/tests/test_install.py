@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 import unittest
 
-REPO = next(parent for parent in Path(__file__).resolve().parents if (parent / 'shared/agent').is_dir())
+REPO = next(parent for parent in Path(__file__).resolve().parents if (parent / 'framework/agent').is_dir())
 
 
 class InstallTest(unittest.TestCase):
@@ -16,15 +16,15 @@ class InstallTest(unittest.TestCase):
         self.work = Path(self.tmp.name).resolve()
         self.repo = self.work / 'repository with spaces'
         shutil.copytree(REPO, self.repo, ignore=shutil.ignore_patterns('.git', '.ai-plans', '__pycache__', 'build', 'dist'))
-        self.script = self.repo / 'codex/scripts/install.sh'
+        self.script = self.repo / 'tools/codex/scripts/install.sh'
         self.codex = self.work / 'codex settings'
         self.skills = self.work / 'skills settings'
         self.agent = self.codex / 'AGENTS.md'
-        self.router = self.repo / 'shared/agent/role-orchestration.md'
-        self.policy = self.repo / 'shared/agent/references/policy-details.md'
-        reference_paths = (self.repo / 'shared/agent/reference-files.txt').read_text().splitlines()
-        self.links = {**{self.codex / relative: self.repo / 'shared/agent' / relative for relative in reference_paths},
-                      **{self.skills / role: self.repo / 'shared/agent/skills' / role
+        self.router = self.repo / 'framework/agent/role-orchestration.md'
+        self.policy = self.repo / 'framework/agent/references'
+        reference_paths = (self.repo / 'framework/agent/reference-files.txt').read_text().splitlines()
+        self.links = {**{self.codex / relative: self.repo / 'framework/agent' / relative for relative in reference_paths},
+                      **{self.skills / role: self.repo / 'framework/agent/skills' / role
                          for role in ('coach', 'copilot', 'executor')}}
 
     def install(self, *args, env=None):
@@ -132,16 +132,16 @@ class InstallTest(unittest.TestCase):
         self.assertFalse(self.skills.exists())
 
     def test_missing_source_and_bad_parents(self):
-        (self.repo / 'shared/agent/skills/executor/SKILL.md').unlink()
+        (self.repo / 'framework/agent/skills/executor/SKILL.md').unlink()
         self.assertNotEqual(self.install().returncode, 0)
         self.assertFalse(self.codex.exists())
-        (self.repo / 'shared/agent/skills/executor/SKILL.md').write_text('replacement')
+        (self.repo / 'framework/agent/skills/executor/SKILL.md').write_text('replacement')
         self.skills.write_text('not a directory')
         self.assertNotEqual(self.install().returncode, 0)
         self.assertFalse(self.codex.exists())
 
     def test_missing_workflow_module_stops_before_install(self):
-        (self.repo / 'shared/agent/references/validation.md').unlink()
+        (self.repo / 'framework/agent/references/validation.md').unlink()
         result = self.install()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('validation.md', result.stderr)
@@ -151,7 +151,7 @@ class InstallTest(unittest.TestCase):
         refs = self.codex / 'references'
         refs.mkdir(parents=True)
         stale = refs / 'retired.md'
-        stale.symlink_to(self.repo / 'shared/agent/references/retired.md')
+        stale.symlink_to(self.repo / 'framework/agent/references/retired.md')
         foreign = refs / 'foreign.md'
         foreign.symlink_to(self.work / 'missing-user-source.md')
         personal = refs / 'personal.md'
@@ -182,7 +182,7 @@ with patch.object(module.os, 'symlink', fail_third):
     try: module.main()
     except OSError: sys.exit(1)
 """
-        result = subprocess.run(['python3', '-c', launcher, str(self.repo / 'codex/scripts/install.py'),
+        result = subprocess.run(['python3', '-c', launcher, str(self.repo / 'tools/codex/scripts/install.py'),
                                  str(self.codex), str(self.skills)], text=True, capture_output=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.agent.read_text(), 'My rules')

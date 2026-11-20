@@ -10,7 +10,7 @@ import subprocess
 import sys
 import tempfile
 
-ROOT = next(parent for parent in Path(__file__).resolve().parents if (parent / 'shared/agent').is_dir()) / 'shared' / 'agent'
+ROOT = next(parent for parent in Path(__file__).resolve().parents if (parent / 'framework/agent').is_dir()) / 'framework' / 'agent'
 BEGIN = '<!-- AI-HARNESS-ROLES:BEGIN -->'
 END = '<!-- AI-HARNESS-ROLES:END -->'
 HASH = re.compile(r'<!-- AI-HARNESS-ROLES:SHA256=([a-f0-9]{64}) -->\n')
@@ -42,7 +42,7 @@ def render(original, router, policy):
     except UnicodeError:
         error('Инструкции должны быть в UTF-8; файл не изменён.')
     # The environment-specific absolute path makes the shared policy discoverable.
-    body = role + f'\nПодробная политика фреймворка: {policy}\n'
+    body = role + f'\nКаталог модулей политики: {policy}\n'
     digest = hashlib.sha256(body.encode('utf-8')).hexdigest()
     block = f'{BEGIN}\n<!-- AI-HARNESS-ROLES:SHA256={digest} -->\n{body}{END}'
     if text.count(BEGIN) != text.count(END) or text.count(BEGIN) > 1:
@@ -105,7 +105,7 @@ def main():
     before = read_regular(active)
     if active != override and override_bytes is None and override.is_symlink():
         error(f'Недоступная ссылка: {override}')
-    source_policy = ROOT / 'references/policy-details.md'
+    source_policy = ROOT / 'references'
     links = {**{codex / relative: ROOT / relative for relative in reference_paths},
              **{skills / role: ROOT / 'skills' / role for role in ('coach', 'copilot', 'executor')}}
     for dest, source in links.items():
@@ -125,7 +125,7 @@ def main():
         relative = Path('references') / dest.name
         if dest.is_symlink() and not (ROOT / relative).exists():
             link = os.readlink(dest)
-            if link in (str(ROOT / relative), str(ROOT.parents[1] / 'omp/agent' / relative)):
+            if link == str(ROOT / relative):
                 stale[dest] = link
     change = before != after
     print(f'Активные глобальные инструкции: {active}')
